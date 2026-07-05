@@ -1,0 +1,40 @@
+spring:
+    application:
+        name: dannest
+
+    # --- Database connection ---
+    # Values come from env vars if set, otherwise the defaults after ":" are used.
+    # Same pattern as docker-compose's ${DB_PORT:-5440}. This keeps secrets out of
+    # code in real environments while staying zero-config for local dev.
+    datasource:
+        url: ${DB_URL:jdbc:postgresql://localhost:5440/dannest}
+        username: ${DB_USER:dannest}
+        password: ${DB_PASSWORD:dannest}
+
+    # --- JPA / Hibernate (the ORM) ---
+    jpa:
+        hibernate:
+            # 'validate' = Hibernate checks the DB schema matches your entities but
+            # never changes it. Flyway owns schema changes (via SQL migrations).
+            # This is the safe, production-correct setup.
+            ddl-auto: validate
+        open-in-view: false # avoids a common performance foot-gun
+        properties:
+            hibernate:
+                format_sql: true # pretty-prints SQL in logs (handy while learning)
+
+    # --- Flyway (database migrations) ---
+    # Looks for versioned SQL files in src/main/resources/db/migration
+    flyway:
+        enabled: true
+
+# --- Actuator (health/monitoring) ---
+# Expose only what we need; never expose everything publicly.
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
+
+server:
+    port: ${SERVER_PORT:8090}

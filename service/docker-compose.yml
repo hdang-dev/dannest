@@ -1,0 +1,17 @@
+name: dannest
+services:
+    postgres:
+        image: postgres:17-alpine
+        container_name: dannest-postgres
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: dannest
+            POSTGRES_PASSWORD: dannest
+            POSTGRES_DB: dannest
+        ports:
+            - "5440:5432"
+        volumes:
+            - dannest_data:/var/lib/postgresql/data
+
+volumes:
+    dannest_data:

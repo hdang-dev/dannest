@@ -1,0 +1,34 @@
+# ---- Node / Next.js (web/) ----
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# ---- Env files (never commit secrets) ----
+.env
+.env.local
+.env.*.local
+
+# ---- Java / Spring Boot / Gradle (service/) ----
+.gradle/
+service/build/
+service/bin/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ---- Postgres bind-mount data (service/docker-compose.yml) ----
+service/data/
+
+# ---- IDEs / OS ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+.DS_Store
+
+# ---- Logs / coverage ----
+*.log
+npm-debug.log*
+coverage/
