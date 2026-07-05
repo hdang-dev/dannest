@@ -28,7 +28,11 @@ toolchain (npm for `web/`, Gradle for `service/`). They talk over HTTP/JSON.
 │   ├── src/main/resources/
 │   │   ├── application.yml      # app + DB config
 │   │   └── db/migration/        # Flyway SQL migrations
+│   ├── Dockerfile              # how the backend is built for deploy
 │   └── docker-compose.yml       # local Postgres
+├── infra/                      # Terraform (Infrastructure as Code) for Render
+├── .github/workflows/          # CI/CD pipeline (deploy.yml)
+├── docs/                       # learning notes (monorepo, CI/CD)
 └── README.md
 ```
 
@@ -102,9 +106,29 @@ Schema is managed by **Flyway**. Add versioned SQL files to
 `service/src/main/resources/db/migration/` named `V1__description.sql`,
 `V2__...`, etc. They run automatically on backend startup.
 
+## Deployment (CI/CD + IaC)
+
+Production runs on **Render** (web + backend) with a **Neon** Postgres database.
+
+- **Infrastructure as Code** — the Render services are defined in `infra/*.tf`
+  (Terraform). Run `terraform apply` from `infra/` to create/update them.
+- **CI/CD** — `.github/workflows/deploy.yml` runs on every push to `main`: it
+  checks the changed app (build + test) and, only if green, triggers a Render
+  deploy. Path filters mean **only the app that changed** is redeployed.
+
+See [`docs/lesson-2-cicd.md`](docs/lesson-2-cicd.md) for a full, beginner-friendly
+explanation of the whole pipeline.
+
+## Learning notes
+
+This is a learning project — the `docs/` folder explains it from scratch:
+
+- [Lesson 1 — Monorepo](docs/lesson-1-monorepo.md)
+- [Lesson 2 — CI/CD](docs/lesson-2-cicd.md)
+
 ## Roadmap
 
 - [x] Monorepo scaffolding (web + service + Postgres)
+- [x] Deployment: Render + Neon, Terraform IaC, CI/CD pipeline
 - [ ] Posts feature (entity, REST API, UI)
 - [ ] Authentication (users + JWT)
-- [ ] CI (GitHub Actions)
