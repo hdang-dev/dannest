@@ -1,0 +1,9 @@
+# Copy this file to `terraform.tfvars` and fill in real values.
+# terraform.tfvars is gitignored — NEVER commit real secrets.
+
+render_api_key  = "rnd_xxxxxxxxxxxxxxxxxxxx"
+render_owner_id = "tea-xxxxxxxxxxxxxxxxxxxx"
+
+db_url      = "jdbc:postgresql://YOUR-NEON-HOST/neondb?sslmode=require"
+db_user     = "neondb_owner"
+db_password = "npg_xxxxxxxxxxxxxx"
