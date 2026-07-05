@@ -1,13 +1,32 @@
 name: deploy
 
-# Run on every push to main: check the code, then deploy if the checks pass.
+# Run on every push to main: check + deploy ONLY the parts that changed.
 on:
   push:
     branches: [main]
 
 jobs:
-  # ---- Check the web app (Next.js) ----
+  # Detect which folders changed in this push.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      service: ${{ steps.filter.outputs.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'web/**'
+            service:
+              - 'service/**'
+
+  # ---- WEB: check, then deploy — only if web/ changed ----
   check-web:
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,8 +42,21 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
-  # ---- Check the backend (Spring Boot) — its test needs a database ----
+  deploy-web:
+    needs: [changes, check-web]
+    if: ${{ needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — web
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/srv-d955uk3tqb8s73eer9bg/deploys"
+
+  # ---- SERVICE: check, then deploy — only if service/ changed ----
   check-service:
+    needs: changes
+    if: ${{ needs.changes.outputs.service == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -57,9 +89,9 @@ jobs:
       - run: chmod +x gradlew
       - run: ./gradlew build --no-daemon
 
-  # ---- Deploy both services to Render (only if BOTH checks passed) ----
-  deploy:
-    needs: [check-web, check-service]
+  deploy-service:
+    needs: [changes, check-service]
+    if: ${{ needs.changes.outputs.service == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy — backend
@@ -67,8 +99,3 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             "https://api.render.com/v1/services/srv-d955uk0js32c73ffde7g/deploys"
-      - name: Trigger Render deploy — web
-        run: |
-          curl -fsS -X POST \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            "https://api.render.com/v1/services/srv-d955uk3tqb8s73eer9bg/deploys"
