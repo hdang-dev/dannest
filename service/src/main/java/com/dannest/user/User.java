@@ -19,7 +19,8 @@ public class User extends BaseEntity {
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(name = "password_hash", nullable = false, length = 255)
+    /** Null for OAuth users (they authenticate via a provider, not a password). */
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
     /** Nullable — set after the avatar Media row exists (avoids a circular NOT NULL). */
@@ -30,6 +31,18 @@ public class User extends BaseEntity {
     @Column(columnDefinition = "text")
     private String bio;
 
+    /** OAuth provider, e.g. "GOOGLE". Null for password users. */
+    @Column(length = 20)
+    private String provider;
+
+    /** The provider's stable user id (Google `sub`). */
+    @Column(name = "provider_id", length = 255)
+    private String providerId;
+
+    /** Profile picture URL from the provider (e.g. Google photo). */
+    @Column(name = "avatar_url", length = 1024)
+    private String avatarUrl;
+
     protected User() {
     }
 
@@ -37,6 +50,17 @@ public class User extends BaseEntity {
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
+    }
+
+    /** Create a user authenticated through an external provider (e.g. Google). */
+    public static User forProvider(String username, String email, String provider, String providerId, String avatarUrl) {
+        User u = new User();
+        u.username = username;
+        u.email = email;
+        u.provider = provider;
+        u.providerId = providerId;
+        u.avatarUrl = avatarUrl;
+        return u;
     }
 
     public String getUsername() {
@@ -77,5 +101,21 @@ public class User extends BaseEntity {
 
     public void setBio(String bio) {
         this.bio = bio;
+    }
+
+    public String getProvider() {
+        return provider;
+    }
+
+    public String getProviderId() {
+        return providerId;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 }
