@@ -8,7 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { API_URL } from "./config";
+import { setUnauthorizedHandler } from "./api";
+import { clearToken, getToken, setToken } from "./token";
 
 export type AuthUser = {
   id: string;
@@ -26,16 +29,32 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const TOKEN_KEY = "dannest_token";
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
+// Re-export so existing imports of getToken keep working.
+export { getToken };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  const logout = useCallback(() => {
+    clearToken();
+    setUser(null);
+    window.google?.accounts?.id?.disableAutoSelect?.();
+  }, []);
+
+  // Any API call that returns 401 (expired / invalid token) ends the session and
+  // sends the user to login — so the app never gets stuck silently failing.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearToken();
+      setUser(null);
+      if (window.location.pathname !== "/login") {
+        router.replace("/login");
+      }
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [router]);
 
   // Restore the session from a stored token on first load.
   useEffect(() => {
@@ -48,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
           .then((res) => {
             if (res.ok) return res.json() as Promise<AuthUser>;
-            localStorage.removeItem(TOKEN_KEY);
+            clearToken(); // stale token — drop it; RequireAuth will route to login
             return null;
           })
           .catch(() => null)
@@ -75,14 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("Google sign-in failed");
     }
     const data = await res.json();
-    localStorage.setItem(TOKEN_KEY, data.accessToken);
+    setToken(data.accessToken);
     setUser(data.user);
-  }, []);
-
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    setUser(null);
-    window.google?.accounts?.id?.disableAutoSelect?.();
   }, []);
 
   return (
