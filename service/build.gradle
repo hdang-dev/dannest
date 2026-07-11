@@ -25,6 +25,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 	implementation 'com.google.api-client:google-api-client:2.7.0'
+	// AWS S3 SDK — used as an S3-compatible client for Cloudflare R2 (no AWS account).
+	// Pinned via BOM 2.28.x: 2.30+ enables default request checksums that R2 rejects.
+	implementation platform('software.amazon.awssdk:bom:2.28.29')
+	implementation 'software.amazon.awssdk:s3'
 	implementation 'org.flywaydb:flyway-core'
 	implementation 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'
@@ -35,4 +39,11 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// Local dev only: activate the 'local' profile so `./gradlew :bootRun` picks up
+// application-local.yml (gitignored secrets like R2 keys). Production runs the jar
+// directly (see Dockerfile), so it's unaffected and uses real env vars.
+tasks.named('bootRun') {
+	systemProperty 'spring.profiles.active', 'local'
 }

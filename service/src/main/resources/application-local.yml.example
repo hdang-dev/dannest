@@ -1,0 +1,13 @@
+# Copy to application-local.yml (gitignored) and fill in real values.
+# Spring loads application-local.yml automatically under the 'local' profile,
+# which `./gradlew :bootRun` activates — no env vars or `source` needed.
+#
+# Get these from the Cloudflare R2 dashboard (see docs). Production doesn't use
+# this file; it sets the matching R2_* env vars instead.
+storage:
+    r2:
+        account-id: your32charhexaccountid
+        access-key: your_access_key_id
+        secret-key: your_secret_access_key
+        bucket: dannest-media
+        public-base-url: https://pub-xxxx.r2.dev

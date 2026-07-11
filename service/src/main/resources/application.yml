@@ -28,6 +28,13 @@ spring:
     flyway:
         enabled: true
 
+    # --- File uploads (media) ---
+    # Cap upload size; the frontend sends already-cropped WebP images.
+    servlet:
+        multipart:
+            max-file-size: ${MEDIA_MAX_FILE_SIZE:5MB}
+            max-request-size: ${MEDIA_MAX_FILE_SIZE:5MB}
+
 # --- Actuator (health/monitoring) ---
 # Expose only what we need; never expose everything publicly.
 management:
@@ -43,7 +50,11 @@ server:
 # Google Sign-In: the frontend gets a Google ID token; the backend verifies it
 # (audience must equal this client id) and issues our own JWT.
 google:
-    client-id: ${GOOGLE_CLIENT_ID:REPLACE_WITH_GOOGLE_CLIENT_ID}
+    # The Google OAuth client id is PUBLIC (exposed in the browser), so it's safe as a
+    # committed default — this makes local dev work with no extra setup. Prod overrides
+    # via the GOOGLE_CLIENT_ID env var (set in infra/). Must match the frontend's
+    # NEXT_PUBLIC_GOOGLE_CLIENT_ID, or Google token verification returns 401.
+    client-id: ${GOOGLE_CLIENT_ID:350344514147-tpdsko12kk5rh10i279o5pjp8j7s7dkk.apps.googleusercontent.com}
 
 # Our app JWT (HS256). The dev default is INSECURE and for local only —
 # production MUST set JWT_SECRET to a long random value (>= 32 bytes).
@@ -55,3 +66,15 @@ jwt:
 app:
     cors:
         allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+# --- Object storage (Cloudflare R2, via the S3 API) ---
+# R2 speaks the S3 protocol, so we use the AWS S3 SDK pointed at R2's endpoint.
+# public-base-url is the bucket's public URL (r2.dev or a custom domain); it's
+# stored on each media row so the frontend can load the image directly.
+storage:
+    r2:
+        account-id: ${R2_ACCOUNT_ID:}
+        access-key: ${R2_ACCESS_KEY:}
+        secret-key: ${R2_SECRET_KEY:}
+        bucket: ${R2_BUCKET:dannest-media}
+        public-base-url: ${R2_PUBLIC_BASE_URL:}
