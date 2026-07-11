@@ -8,8 +8,8 @@ import java.util.UUID;
 /**
  * Body of POST /api/v1/collections.
  *
- * <p>{@code visibility} defaults to PUBLIC when omitted; {@code coverMediaId} is optional
- * and, when present, must reference a media asset owned by the caller.
+ * <p>{@code visibility} defaults to PUBLIC when omitted. The optional cover is a media
+ * asset ({@code coverMediaId}) — uploaded or external — that the caller owns.
  */
 public record CreateCollectionRequest(
         @NotBlank @Size(max = 120) String name,

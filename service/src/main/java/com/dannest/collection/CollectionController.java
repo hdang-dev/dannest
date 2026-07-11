@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,10 +31,21 @@ public class CollectionController {
         this.collectionService = collectionService;
     }
 
-    /** List the authenticated user's own collections (paginated). */
+    /**
+     * List collections, filtered by:
+     * {@code scope} (MINE = your own [default], PUBLIC = every user's public / home feed),
+     * {@code visibility} (PUBLIC/PRIVATE — scope=MINE only), {@code archived} (true = archived
+     * only, else active — scope=MINE only), and {@code q} (name search).
+     */
     @GetMapping
-    public PagedResponse<CollectionResponse> list(@AuthenticationPrincipal Jwt jwt, Pageable pageable) {
-        return collectionService.listOwned(currentUserId(jwt), pageable);
+    public PagedResponse<CollectionResponse> list(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "MINE") CollectionScope scope,
+            @RequestParam(required = false) Visibility visibility,
+            @RequestParam(required = false) Boolean archived,
+            @RequestParam(required = false) String q,
+            Pageable pageable) {
+        return collectionService.list(currentUserId(jwt), scope, visibility, archived, q, pageable);
     }
 
     /** A single collection — visible if PUBLIC or owned by the caller. */
@@ -57,10 +69,18 @@ public class CollectionController {
         return collectionService.update(currentUserId(jwt), id, request);
     }
 
+    /** Archive (soft-delete) a collection — hidden from listings but recoverable. */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        collectionService.delete(currentUserId(jwt), id);
+    public ResponseEntity<Void> archive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        collectionService.archive(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Restore a previously archived collection. */
+    @PostMapping("/{id}/unarchive")
+    public CollectionResponse unarchive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        collectionService.unarchive(currentUserId(jwt), id);
+        return collectionService.get(currentUserId(jwt), id);
     }
 
     private static UUID currentUserId(Jwt jwt) {

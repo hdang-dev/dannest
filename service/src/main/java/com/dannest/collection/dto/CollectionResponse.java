@@ -3,6 +3,7 @@ package com.dannest.collection.dto;
 import com.dannest.collection.Collection;
 import com.dannest.collection.Visibility;
 import com.dannest.media.Media;
+import com.dannest.media.dto.CropDto;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -15,6 +16,8 @@ public record CollectionResponse(
         Visibility visibility,
         UUID coverMediaId,
         String coverUrl,
+        CropDto coverCrop,
+        Instant archivedAt,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -29,6 +32,8 @@ public record CollectionResponse(
                 collection.getVisibility(),
                 cover != null ? cover.getId() : null,
                 cover != null ? cover.getUrl() : null,
+                cover != null ? CropDto.from(cover.getCrop()) : null,
+                collection.getArchivedAt(),
                 collection.getCreatedAt(),
                 collection.getUpdatedAt());
     }

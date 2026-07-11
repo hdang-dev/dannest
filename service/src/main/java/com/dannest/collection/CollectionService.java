@@ -10,8 +10,13 @@ import com.dannest.media.Media;
 import com.dannest.media.MediaRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,10 +54,55 @@ public class CollectionService {
         return CollectionResponse.from(collectionRepository.save(collection));
     }
 
+    /**
+     * List collections with filters:
+     * <ul>
+     *   <li>{@code scope=MINE} — the caller's own; {@code visibility} narrows to PUBLIC/PRIVATE (null = all)</li>
+     *   <li>{@code scope=PUBLIC} — every user's public collections (the home feed); {@code visibility} is ignored</li>
+     * </ul>
+     * Results exclude archived collections and default to newest-first when unsorted.
+     */
     @Transactional(readOnly = true)
-    public PagedResponse<CollectionResponse> listOwned(UUID userId, Pageable pageable) {
+    public PagedResponse<CollectionResponse> list(
+            UUID userId,
+            CollectionScope scope,
+            Visibility visibility,
+            Boolean archived,
+            String query,
+            Pageable pageable) {
+        String q = (query == null || query.isBlank()) ? null : query.trim();
+        Pageable effective = pageable.getSort().isSorted()
+                ? pageable
+                : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                        Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        // Build predicates for only the filters that are present — so a null filter
+        // never becomes a nullable SQL parameter (which Postgres can't type-infer).
+        List<Specification<Collection>> filters = new ArrayList<>();
+        if (scope == CollectionScope.PUBLIC) {
+            // The public feed is always active + public.
+            filters.add((root, cq, cb) -> cb.isNull(root.get("archivedAt")));
+            filters.add((root, cq, cb) -> cb.equal(root.get("visibility"), Visibility.PUBLIC));
+        } else {
+            filters.add((root, cq, cb) -> cb.equal(root.get("owner").get("id"), userId));
+            // archived == true → archived only; otherwise active only.
+            if (Boolean.TRUE.equals(archived)) {
+                filters.add((root, cq, cb) -> cb.isNotNull(root.get("archivedAt")));
+            } else {
+                filters.add((root, cq, cb) -> cb.isNull(root.get("archivedAt")));
+            }
+            if (visibility != null) {
+                filters.add((root, cq, cb) -> cb.equal(root.get("visibility"), visibility));
+            }
+        }
+        if (q != null) {
+            String like = "%" + q.toLowerCase() + "%";
+            filters.add((root, cq, cb) -> cb.like(cb.lower(root.get("name")), like));
+        }
+
+        Specification<Collection> spec = Specification.allOf(filters);
         return PagedResponse.of(
-                collectionRepository.findByOwnerId(userId, pageable), CollectionResponse::from);
+                collectionRepository.findAll(spec, effective), CollectionResponse::from);
     }
 
     @Transactional(readOnly = true)
@@ -73,15 +123,25 @@ public class CollectionService {
         if (request.visibility() != null) {
             collection.setVisibility(request.visibility());
         }
-        if (request.coverMediaId() != null) {
+        // clearCover removes the cover; otherwise a new coverMediaId replaces it.
+        if (Boolean.TRUE.equals(request.clearCover())) {
+            collection.setCover(null);
+        } else if (request.coverMediaId() != null) {
             collection.setCover(resolveOwnedCover(userId, request.coverMediaId()));
         }
         return CollectionResponse.from(collection);
     }
 
-    public void delete(UUID userId, UUID collectionId) {
+    /** Soft-delete: archive the collection so it's hidden from listings but recoverable. */
+    public void archive(UUID userId, UUID collectionId) {
         Collection collection = findOwned(userId, collectionId);
-        collectionRepository.delete(collection);
+        collection.archive();
+    }
+
+    /** Restore a previously archived collection. */
+    public void unarchive(UUID userId, UUID collectionId) {
+        Collection collection = findOwned(userId, collectionId);
+        collection.unarchive();
     }
 
     /** Load a collection the caller is allowed to view: it's PUBLIC, or the caller owns it. */
