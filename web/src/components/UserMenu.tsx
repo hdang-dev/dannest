@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 
 export default function UserMenu() {
@@ -40,6 +41,13 @@ export default function UserMenu() {
               </p>
               <p className="truncate text-xs text-slate-400">{user.email}</p>
             </div>
+            <Link
+              href="/my-collections"
+              onClick={() => setOpen(false)}
+              className="block border-b border-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              My Collections
+            </Link>
             <button
               onClick={() => {
                 setOpen(false);
