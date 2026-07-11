@@ -41,9 +41,16 @@ resource "render_web_service" "backend" {
     DB_PASSWORD = { value = var.db_password }
 
     # Auth: verify Google tokens, sign our JWTs, allow the web origin (CORS).
-    GOOGLE_CLIENT_ID      = { value = var.google_client_id }
-    JWT_SECRET            = { value = var.jwt_secret }
-    CORS_ALLOWED_ORIGINS  = { value = local.web_url }
+    GOOGLE_CLIENT_ID     = { value = var.google_client_id }
+    JWT_SECRET           = { value = var.jwt_secret }
+    CORS_ALLOWED_ORIGINS = { value = local.web_url }
+
+    # Object storage (Cloudflare R2) — media uploads.
+    R2_ACCOUNT_ID      = { value = var.r2_account_id }
+    R2_ACCESS_KEY      = { value = var.r2_access_key }
+    R2_SECRET_KEY      = { value = var.r2_secret_key }
+    R2_BUCKET          = { value = var.r2_bucket }
+    R2_PUBLIC_BASE_URL = { value = var.r2_public_base_url }
   }
 }
 

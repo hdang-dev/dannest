@@ -46,3 +46,33 @@ variable "jwt_secret" {
   type        = string
   sensitive   = true
 }
+
+# ---- Object storage (Cloudflare R2) ----
+
+variable "r2_account_id" {
+  description = "Cloudflare R2 account id (forms the S3 endpoint host)"
+  type        = string
+}
+
+variable "r2_access_key" {
+  description = "R2 API token Access Key ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "r2_secret_key" {
+  description = "R2 API token Secret Access Key"
+  type        = string
+  sensitive   = true
+}
+
+variable "r2_bucket" {
+  description = "R2 bucket name for media uploads"
+  type        = string
+  default     = "dannest-media"
+}
+
+variable "r2_public_base_url" {
+  description = "R2 bucket public base URL (pub-*.r2.dev or custom domain), no trailing slash"
+  type        = string
+}

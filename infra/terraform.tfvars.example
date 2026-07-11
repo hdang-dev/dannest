@@ -10,3 +10,11 @@ db_password = "npg_xxxxxxxxxxxxxx"
 
 # Generate with: openssl rand -hex 48
 jwt_secret = "your-long-random-secret"
+
+# ---- Cloudflare R2 (media storage) ----
+# Same values as service/src/main/resources/application-local.yml.
+r2_account_id      = "your32charhexaccountid"
+r2_access_key      = "your_access_key_id"
+r2_secret_key      = "your_secret_access_key"
+r2_bucket          = "dannest-media"
+r2_public_base_url = "https://pub-xxxx.r2.dev"
