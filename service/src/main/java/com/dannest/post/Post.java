@@ -42,6 +42,10 @@ public class Post extends BaseEntity {
         return collection;
     }
 
+    public void setCollection(Collection collection) {
+        this.collection = collection;
+    }
+
     public User getAuthor() {
         return author;
     }
