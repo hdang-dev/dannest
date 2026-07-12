@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { type Collection } from "@/lib/collections";
 import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
@@ -28,7 +29,9 @@ export default function CollectionCard({ collection: c, onEdit, onArchive, onRes
         menuOpen ? "z-20" : ""
       }`}
     >
-      <div
+      <Link
+        href={`/collections/${c.id}`}
+        aria-label={`Open ${c.name}`}
         className="grid aspect-16/10 place-items-center overflow-hidden rounded-t-2xl text-2xl"
         style={
           c.coverUrl
@@ -41,16 +44,18 @@ export default function CollectionCard({ collection: c, onEdit, onArchive, onRes
             {c.name.charAt(0).toUpperCase()}
           </span>
         )}
-      </div>
+      </Link>
 
       <div className="flex items-start gap-1 p-2.5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{c.name}</p>
+        <Link href={`/collections/${c.id}`} className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold transition hover:text-teal-600 dark:hover:text-teal-400">
+            {c.name}
+          </p>
           <p className="text-xs text-slate-400">
             {c.visibility === "PRIVATE" ? "Private" : "Public"} · Edited{" "}
             {formatRelativeTime(c.updatedAt)}
           </p>
-        </div>
+        </Link>
 
         <div className="relative">
           <button

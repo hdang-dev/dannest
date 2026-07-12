@@ -6,10 +6,11 @@ import { type Post } from "@/lib/posts";
 type Props = {
   posts: Post[];
   onEdit: (post: Post) => void;
+  onLike: (post: Post) => void;
   emptyLabel?: string;
 };
 
-export default function PostFeed({ posts, onEdit, emptyLabel = "Nothing here yet." }: Props) {
+export default function PostFeed({ posts, onEdit, onLike, emptyLabel = "Nothing here yet." }: Props) {
   if (posts.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
@@ -21,7 +22,7 @@ export default function PostFeed({ posts, onEdit, emptyLabel = "Nothing here yet
   return (
     <div className="flex flex-col gap-4">
       {posts.map((post) => (
-        <PostCard key={post.id} post={post} onEdit={onEdit} />
+        <PostCard key={post.id} post={post} onEdit={onEdit} onLike={onLike} />
       ))}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
@@ -12,7 +12,7 @@ import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
 import { useAuth } from "@/lib/auth";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
-import { generateMockPosts, type Post } from "@/lib/posts";
+import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
 
 type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
 
@@ -21,25 +21,55 @@ export default function CollectionPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [collection, setCollection] = useState<Collection | null | undefined>(undefined);
+  const [posts, setPosts] = useState<Post[] | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Load the real collection from the backend.
+  // Load the real collection + its posts from the backend.
   useEffect(() => {
     let cancelled = false;
     getCollection(id)
       .then((c) => !cancelled && setCollection(c))
       .catch(() => !cancelled && setCollection(null));
+    listByCollection(id, { size: 50 })
+      .then((page) => !cancelled && setPosts(page.content))
+      .catch(() => !cancelled && setPosts([]));
     return () => {
       cancelled = true;
     };
   }, [id]);
 
   const mine = !!user && !!collection && collection.ownerId === user.id;
-  // Posts are still mocked — generate a stable, random set for this collection.
-  const list = useMemo(() => generateMockPosts(id), [id]);
   const [from, to] = gradientFor(id);
+
+  // Optimistic like toggle — flip locally, then persist (revert on failure).
+  function toggleLike(post: Post) {
+    const liked = post.likedByMe;
+    setPosts((cur) =>
+      cur?.map((p) =>
+        p.id === post.id ? { ...p, likedByMe: !liked, likeCount: p.likeCount + (liked ? -1 : 1) } : p,
+      ) ?? cur,
+    );
+    (liked ? unlikePost(post.id) : likePost(post.id)).catch(() => {
+      setPosts((cur) =>
+        cur?.map((p) => (p.id === post.id ? { ...p, likedByMe: liked, likeCount: p.likeCount } : p)) ?? cur,
+      );
+    });
+  }
+
+  // A saved post: replace it if already listed, else prepend.
+  function upsert(saved: Post) {
+    setComposer(null);
+    setPosts((cur) => {
+      if (!cur) return [saved];
+      const i = cur.findIndex((p) => p.id === saved.id);
+      if (i === -1) return [saved, ...cur];
+      const copy = cur.slice();
+      copy[i] = saved;
+      return copy;
+    });
+  }
 
   async function handleArchive() {
     setMenuOpen(false);
@@ -141,14 +171,19 @@ export default function CollectionPage() {
 
               <p className="text-sm text-slate-400">
                 {collection.visibility === "PRIVATE" ? "Private · " : ""}
-                {list.length} {list.length === 1 ? "post" : "posts"}
+                {posts?.length ?? 0} {(posts?.length ?? 0) === 1 ? "post" : "posts"}
               </p>
 
-              <PostFeed
-                posts={list}
-                onEdit={(post) => setComposer({ mode: "edit", post })}
-                emptyLabel="No posts in this collection yet."
-              />
+              {posts === null ? (
+                <p className="text-sm text-slate-400">Loading…</p>
+              ) : (
+                <PostFeed
+                  posts={posts}
+                  onEdit={(post) => setComposer({ mode: "edit", post })}
+                  onLike={toggleLike}
+                  emptyLabel="No posts in this collection yet."
+                />
+              )}
             </main>
 
             {mine && <NewPostFab onClick={() => setComposer({ mode: "create" })} />}
@@ -162,6 +197,7 @@ export default function CollectionPage() {
           post={composer.mode === "edit" ? composer.post : undefined}
           defaultCollectionId={id}
           onClose={() => setComposer(null)}
+          onSaved={upsert}
         />
       )}
 
