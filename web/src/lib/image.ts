@@ -23,7 +23,7 @@ export async function fileToWebp(file: Blob, maxDim = 2000, quality = 0.9): Prom
   );
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
+export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);

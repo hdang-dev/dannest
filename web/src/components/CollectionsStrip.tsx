@@ -43,9 +43,10 @@ export default function CollectionsStrip() {
         {collections.map((c) => {
           const [from, to] = gradientFor(c.id);
           return (
-            <div
+            <Link
               key={c.id}
-              className="w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+              href={`/collections/${c.id}`}
+              className="w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-teal-400 dark:border-slate-800 dark:bg-slate-900"
             >
               <div
                 className="grid aspect-16/10 place-items-center text-3xl"
@@ -66,7 +67,7 @@ export default function CollectionsStrip() {
                   {c.name}
                 </p>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

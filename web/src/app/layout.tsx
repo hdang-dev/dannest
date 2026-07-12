@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { PostsProvider } from "@/lib/posts";
 import ServerWake from "@/components/ServerWake";
 
 const geistSans = Geist({
@@ -37,7 +38,9 @@ export default function RootLayout({
           }}
         />
         <ServerWake />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <PostsProvider>{children}</PostsProvider>
+        </AuthProvider>
       </body>
     </html>
   );
