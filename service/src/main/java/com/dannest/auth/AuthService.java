@@ -55,9 +55,16 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    /** Derive a unique username from the email local-part (append a number on clash). */
+    /**
+     * Derive a unique username, preferring Google's display name (so new users get a
+     * recognizable handle instead of an email fragment); falls back to the email
+     * local-part if Google gave no usable name. Appends a number on clash.
+     */
     private String generateUsername(String email, String name) {
-        String base = email.substring(0, email.indexOf('@')).toLowerCase().replaceAll("[^a-z0-9_]", "");
+        String base = slugify(name);
+        if (base.isEmpty()) {
+            base = email.substring(0, email.indexOf('@')).toLowerCase().replaceAll("[^a-z0-9_]", "");
+        }
         if (base.isEmpty()) {
             base = "user";
         }
@@ -70,5 +77,12 @@ public class AuthService {
             candidate = base + i++;
         }
         return candidate;
+    }
+
+    private static String slugify(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.toLowerCase().replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
     }
 }

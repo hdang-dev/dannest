@@ -11,6 +11,7 @@ import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.media.Media;
 import com.dannest.media.MediaRepository;
+import com.dannest.media.dto.CropDto;
 import com.dannest.post.dto.CreatePostRequest;
 import com.dannest.post.dto.PostMediaResponse;
 import com.dannest.post.dto.PostResponse;
@@ -200,6 +201,7 @@ public class PostService {
                 .map(p -> {
                     Collection c = p.getCollection();
                     User a = p.getAuthor();
+                    Media authorAvatar = a.getAvatar();
                     return new PostResponse(
                             p.getId(),
                             c.getId(),
@@ -207,7 +209,8 @@ public class PostService {
                             c.getVisibility(),
                             a.getId(),
                             a.getUsername(),
-                            a.getAvatarUrl(),
+                            authorAvatar != null ? authorAvatar.getUrl() : null,
+                            authorAvatar != null ? CropDto.from(authorAvatar.getCrop()) : null,
                             p.getTitle(),
                             p.getContent(),
                             imagesByPost.getOrDefault(p.getId(), List.of()),
