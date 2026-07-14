@@ -15,6 +15,8 @@ type Props = {
   initialCrop?: Crop | null;
   /** Output aspect ratio (defaults to the cover ratio). */
   aspect?: number;
+  /** "round" shows a circular selection mask — used for avatars. */
+  cropShape?: "rect" | "round";
   /** Reports the crop as fractions (0..1) of the image. */
   onCropChange: (crop: Crop) => void;
 };
@@ -28,6 +30,7 @@ export default function ImageCropper({
   imageUrl,
   initialCrop,
   aspect = 16 / 10,
+  cropShape = "rect",
   onCropChange,
 }: Props) {
   const [fileSrc, setFileSrc] = useState("");
@@ -54,13 +57,17 @@ export default function ImageCropper({
       : undefined;
 
   return (
-    <div className="relative aspect-16/10 w-full overflow-hidden rounded-xl bg-slate-900">
+    <div
+      className="relative w-full overflow-hidden rounded-xl bg-slate-900"
+      style={{ aspectRatio: aspect }}
+    >
       {src && (
         <Cropper
           image={src}
           crop={crop}
           zoom={zoom}
           aspect={aspect}
+          cropShape={cropShape}
           initialCroppedAreaPercentages={initialPct}
           onCropChange={setCrop}
           onZoomChange={setZoom}

@@ -18,3 +18,10 @@ export function formatRelativeTime(iso: string): string {
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(days / 365)}y ago`;
 }
+
+/** e.g. "Joined March 2026". */
+export function formatJoinDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `Joined ${date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`;
+}

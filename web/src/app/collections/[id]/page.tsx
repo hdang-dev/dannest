@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
@@ -8,8 +9,10 @@ import PostFeed from "@/components/PostFeed";
 import NewPostFab from "@/components/NewPostFab";
 import PostComposerModal from "@/components/PostComposerModal";
 import CollectionFormModal from "@/components/CollectionFormModal";
+import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
+import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
 import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
@@ -153,15 +156,38 @@ export default function CollectionPage() {
                 )}
 
                 {/* name overlay — pinned to the bottom, darkened so text stays readable over any cover */}
-                <div className="absolute inset-x-0 bottom-0 flex items-end bg-linear-to-t from-black/60 to-transparent p-4">
-                  <div>
+                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-linear-to-t from-black/60 to-transparent p-4">
+                  <div className="min-w-0">
                     {!collection.coverUrl && (
                       <div className="text-4xl font-bold text-white/90 drop-shadow-lg">
                         {collection.name.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <h1 className="mt-1 text-2xl font-bold text-white drop-shadow-md">{collection.name}</h1>
+                    <h1 className="mt-1 truncate text-2xl font-bold text-white drop-shadow-md">
+                      {collection.name}
+                    </h1>
                   </div>
+
+                  {/* owner badge — distinct from each post's author (a public collection
+                      may later hold posts from multiple contributors). */}
+                  <Link
+                    href={`/users/${collection.ownerId}`}
+                    className="flex shrink-0 items-center gap-2 rounded-full bg-black/30 py-1 pl-1 pr-3 backdrop-blur-sm transition hover:bg-black/50"
+                  >
+                    <div className="shrink-0 rounded-full ring-2 ring-white/80">
+                      {collection.ownerAvatarUrl ? (
+                        <div
+                          className="h-8 w-8 rounded-full"
+                          style={coverStyle(collection.ownerAvatarUrl, collection.ownerAvatarCrop ?? FULL_CROP)}
+                        />
+                      ) : (
+                        <DefaultAvatarIcon size={32} />
+                      )}
+                    </div>
+                    <span className="max-w-24 truncate text-xs font-medium text-white">
+                      {collection.ownerUsername}
+                    </span>
+                  </Link>
                 </div>
               </div>
 

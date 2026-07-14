@@ -22,7 +22,9 @@ export type Post = {
   collectionVisibility: PostVisibility;
   authorId: string;
   authorUsername: string;
+  // The author's own uploaded/embedded avatar — never the Google OAuth picture.
   authorAvatarUrl: string | null;
+  authorAvatarCrop: Crop | null;
   title: string;
   content: string | null;
   images: PostImage[];

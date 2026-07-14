@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import Avatar from "./Avatar";
+import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import ImageCropper from "./ImageCropper";
 import PostGallery from "./PostGallery";
 import { fileToWebp } from "@/lib/image";
 import { coverStyle } from "@/lib/cover";
-import { gradientFor } from "@/lib/gradient";
 import { useAuth } from "@/lib/auth";
 import {
   uploadMedia,
@@ -97,7 +96,6 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
   const fileInput = useRef<HTMLInputElement>(null);
 
   const authorName = user?.username ?? "You";
-  const [authorFrom, authorTo] = gradientFor(user?.id ?? "you");
 
   const [collections, setCollections] = useState<Collection[]>([]);
   const [collectionId, setCollectionId] = useState(post?.collectionId ?? defaultCollectionId ?? "");
@@ -289,7 +287,14 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
             /* ---- review: the post as it will appear ---- */
             <article className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3 p-4">
-                <Avatar name={authorName} from={authorFrom} to={authorTo} />
+                {user?.avatarUrl ? (
+                  <div
+                    className="h-10 w-10 shrink-0 rounded-full"
+                    style={coverStyle(user.avatarUrl, user.avatarCrop ?? FULL_CROP)}
+                  />
+                ) : (
+                  <DefaultAvatarIcon size={40} />
+                )}
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 dark:text-slate-100">{authorName}</div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -331,7 +336,14 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
             <>
               {/* author, with the collection selector + audience tucked under the name */}
               <div className="flex items-center gap-3">
-                <Avatar name={authorName} from={authorFrom} to={authorTo} />
+                {user?.avatarUrl ? (
+                  <div
+                    className="h-10 w-10 shrink-0 rounded-full"
+                    style={coverStyle(user.avatarUrl, user.avatarCrop ?? FULL_CROP)}
+                  />
+                ) : (
+                  <DefaultAvatarIcon size={40} />
+                )}
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 dark:text-slate-100">{authorName}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">

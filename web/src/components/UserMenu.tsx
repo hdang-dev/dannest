@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { coverStyle } from "@/lib/cover";
+import { FULL_CROP } from "@/lib/media";
+import DefaultAvatarIcon from "./DefaultAvatarIcon";
 
 export default function UserMenu() {
   const { user, logout } = useAuth();
@@ -18,16 +21,12 @@ export default function UserMenu() {
         className="block rounded-full ring-2 ring-transparent transition hover:ring-teal-400"
       >
         {user.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={user.avatarUrl}
-            alt={user.username}
-            className="h-9 w-9 rounded-full object-cover"
+          <div
+            className="h-9 w-9 rounded-full"
+            style={coverStyle(user.avatarUrl, user.avatarCrop ?? FULL_CROP)}
           />
         ) : (
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-teal-600 font-semibold text-white">
-            {user.username.charAt(0).toUpperCase()}
-          </span>
+          <DefaultAvatarIcon size={36} />
         )}
       </button>
 
@@ -41,6 +40,13 @@ export default function UserMenu() {
               </p>
               <p className="truncate text-xs text-slate-400">{user.email}</p>
             </div>
+            <Link
+              href="/profile"
+              onClick={() => setOpen(false)}
+              className="block border-b border-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Profile
+            </Link>
             <Link
               href="/my-collections"
               onClick={() => setOpen(false)}

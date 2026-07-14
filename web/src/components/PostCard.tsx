@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Avatar from "./Avatar";
+import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import PostGallery from "./PostGallery";
 import { formatRelativeTime } from "@/lib/time";
-import { gradientFor } from "@/lib/gradient";
+import { coverStyle } from "@/lib/cover";
+import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
 import type { Post } from "@/lib/posts";
 
@@ -25,7 +26,6 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const owned = !!user && user.id === post.authorId;
-  const [from, to] = gradientFor(post.authorId);
   const edited = post.updatedAt !== post.createdAt;
   const timeLabel = edited
     ? `edited ${formatRelativeTime(post.updatedAt)}`
@@ -41,10 +41,24 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
     >
       {/* header */}
       <div className="flex items-center gap-3 p-4">
-        <Avatar name={post.authorUsername} from={from} to={to} />
+        <Link href={`/users/${post.authorId}`} className="shrink-0">
+          {post.authorAvatarUrl ? (
+            <div
+              className="h-10 w-10 rounded-full"
+              style={coverStyle(post.authorAvatarUrl, post.authorAvatarCrop ?? FULL_CROP)}
+            />
+          ) : (
+            <DefaultAvatarIcon size={40} />
+          )}
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2">
-            <span className="font-semibold text-slate-900 dark:text-slate-100">{post.authorUsername}</span>
+            <Link
+              href={`/users/${post.authorId}`}
+              className="font-semibold text-slate-900 hover:underline dark:text-slate-100"
+            >
+              {post.authorUsername}
+            </Link>
             <span className="text-slate-300 dark:text-slate-600">·</span>
             <span className="text-sm text-slate-400">{timeLabel}</span>
           </div>

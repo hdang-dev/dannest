@@ -12,6 +12,10 @@ export type CollectionScope = "MINE" | "PUBLIC";
 export type Collection = {
   id: string;
   ownerId: string;
+  ownerUsername: string;
+  // The owner's own uploaded/embedded avatar — never the Google OAuth picture.
+  ownerAvatarUrl: string | null;
+  ownerAvatarCrop: Crop | null;
   name: string;
   description: string | null;
   visibility: Visibility;

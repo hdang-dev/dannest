@@ -12,12 +12,16 @@ import { useRouter } from "next/navigation";
 import { API_URL } from "./config";
 import { setUnauthorizedHandler } from "./api";
 import { clearToken, getToken, setToken } from "./token";
+import type { Crop } from "./media";
 
+// `avatarUrl`/`avatarCrop` are the user's own uploaded/embedded photo (backed by a
+// Media asset) — never the Google OAuth picture.
 export type AuthUser = {
   id: string;
   username: string;
   email: string;
   avatarUrl: string | null;
+  avatarCrop: Crop | null;
 };
 
 type AuthContextValue = {
@@ -25,6 +29,8 @@ type AuthContextValue = {
   loading: boolean;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
+  /** Patch the in-memory user (e.g. after a profile edit) without a full re-fetch. */
+  updateUser: (patch: Partial<AuthUser>) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -41,6 +47,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearToken();
     setUser(null);
     window.google?.accounts?.id?.disableAutoSelect?.();
+  }, []);
+
+  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser((cur) => (cur ? { ...cur, ...patch } : cur));
   }, []);
 
   // Any API call that returns 401 (expired / invalid token) ends the session and
@@ -99,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
