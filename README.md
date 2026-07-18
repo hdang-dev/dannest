@@ -130,5 +130,6 @@ This is a learning project — the `docs/` folder explains it from scratch:
 
 - [x] Monorepo scaffolding (web + service + Postgres)
 - [x] Deployment: Render + Neon, Terraform IaC, CI/CD pipeline
-- [ ] Posts feature (entity, REST API, UI)
-- [ ] Authentication (users + JWT)
+- [x] Authentication (Google Sign-In + JWT)
+- [x] Posts feature (entity, REST API, UI)
+- [x] Comments feature (entity, REST API, UI)

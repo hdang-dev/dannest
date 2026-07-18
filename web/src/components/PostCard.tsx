@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import PostGallery from "./PostGallery";
+import CommentSection from "./CommentSection";
 import { formatRelativeTime } from "@/lib/time";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP } from "@/lib/media";
@@ -24,6 +25,7 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
   const { user } = useAuth();
   const [showComments, setShowComments] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(post.commentCount);
 
   const owned = !!user && user.id === post.authorId;
   const edited = post.updatedAt !== post.createdAt;
@@ -145,15 +147,12 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
               : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
         >
-          💬 {formatCount(post.commentCount)}
+          💬 {formatCount(commentCount)}
         </button>
       </div>
 
-      {/* comments — count only for now (the comments API isn't built yet) */}
       {showComments && (
-        <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
-          <p className="text-center text-xs text-slate-400">💬 Commenting coming soon</p>
-        </div>
+        <CommentSection postId={post.id} initialCount={post.commentCount} onCountChange={setCommentCount} />
       )}
     </article>
   );
