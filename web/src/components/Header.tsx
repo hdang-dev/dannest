@@ -4,6 +4,7 @@ import Link from "next/link";
 import ThemeToggle from "./ThemeToggle";
 import GoogleSignIn from "./GoogleSignIn";
 import UserMenu from "./UserMenu";
+import NotificationBell from "./NotificationBell";
 import { useAuth } from "@/lib/auth";
 
 export default function Header() {
@@ -21,6 +22,7 @@ export default function Header() {
 
         <div className="ml-auto flex items-center gap-3">
           <ThemeToggle />
+          {!loading && user && <NotificationBell />}
           {!loading && (user ? <UserMenu /> : <GoogleSignIn />)}
         </div>
       </div>
