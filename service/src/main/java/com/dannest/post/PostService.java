@@ -9,9 +9,12 @@ import com.dannest.common.BadRequestException;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.follow.CollectionFollowRepository;
 import com.dannest.media.Media;
 import com.dannest.media.MediaRepository;
 import com.dannest.media.dto.CropDto;
+import com.dannest.notification.NotificationService;
+import com.dannest.notification.NotificationType;
 import com.dannest.post.dto.CreatePostRequest;
 import com.dannest.post.dto.PostMediaResponse;
 import com.dannest.post.dto.PostResponse;
@@ -52,6 +55,8 @@ public class PostService {
     private final CollectionRepository collectionRepository;
     private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
+    private final CollectionFollowRepository collectionFollowRepository;
+    private final NotificationService notificationService;
 
     public PostService(
             PostRepository postRepository,
@@ -60,7 +65,9 @@ public class PostService {
             CommentRepository commentRepository,
             CollectionRepository collectionRepository,
             MediaRepository mediaRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            CollectionFollowRepository collectionFollowRepository,
+            NotificationService notificationService) {
         this.postRepository = postRepository;
         this.postMediaRepository = postMediaRepository;
         this.postLikeRepository = postLikeRepository;
@@ -68,6 +75,8 @@ public class PostService {
         this.collectionRepository = collectionRepository;
         this.mediaRepository = mediaRepository;
         this.userRepository = userRepository;
+        this.collectionFollowRepository = collectionFollowRepository;
+        this.notificationService = notificationService;
     }
 
     public PostResponse create(UUID userId, CreatePostRequest request) {
@@ -76,7 +85,16 @@ public class PostService {
 
         Post post = postRepository.save(new Post(collection, author, request.title().trim(), trimToNull(request.content())));
         attachMedia(userId, post, request.mediaIds());
+        notifyFollowers(userId, collection, post);
         return toResponse(post, userId);
+    }
+
+    /** Tell everyone following this collection that it has a new post. */
+    private void notifyFollowers(UUID authorId, Collection collection, Post post) {
+        for (UUID followerId : collectionFollowRepository.findFollowerIdsByCollectionId(collection.getId())) {
+            notificationService.notify(
+                    followerId, authorId, NotificationType.NEW_POST, collection.getId(), post.getId(), null);
+        }
     }
 
     /**

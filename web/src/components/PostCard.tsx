@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import PostGallery from "./PostGallery";
@@ -19,13 +19,27 @@ type Props = {
   post: Post;
   onEdit: (post: Post) => void;
   onLike: (post: Post) => void;
+  // From a notification deep link — the one post (and, for a reply, comment) to scroll to.
+  focusPostId?: string | null;
+  focusCommentId?: string | null;
 };
 
-export default function PostCard({ post, onEdit, onLike }: Props) {
+export default function PostCard({ post, onEdit, onLike, focusPostId, focusCommentId }: Props) {
   const { user } = useAuth();
-  const [showComments, setShowComments] = useState(false);
+  const isFocusTarget = focusPostId === post.id;
+  const [showComments, setShowComments] = useState(isFocusTarget && !!focusCommentId);
   const [menuOpen, setMenuOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(post.commentCount);
+  const [highlight, setHighlight] = useState(isFocusTarget);
+  const rootRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!isFocusTarget) return;
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const timer = setTimeout(() => setHighlight(false), 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const owned = !!user && user.id === post.authorId;
   const edited = post.updatedAt !== post.createdAt;
@@ -37,9 +51,12 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
     // No overflow-hidden here, or it would clip the ⋯ dropdown. Inner blocks round
     // their own corners instead. Raise stacking while the menu is open.
     <article
-      className={`relative rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 ${
-        menuOpen ? "z-20" : ""
-      }`}
+      ref={rootRef}
+      className={`relative rounded-2xl border bg-white transition dark:bg-slate-900 ${
+        highlight
+          ? "border-teal-400 ring-2 ring-teal-400/60"
+          : "border-slate-200 dark:border-slate-800"
+      } ${menuOpen ? "z-20" : ""}`}
     >
       {/* header */}
       <div className="flex items-center gap-3 p-4">
@@ -152,7 +169,12 @@ export default function PostCard({ post, onEdit, onLike }: Props) {
       </div>
 
       {showComments && (
-        <CommentSection postId={post.id} initialCount={post.commentCount} onCountChange={setCommentCount} />
+        <CommentSection
+          postId={post.id}
+          initialCount={post.commentCount}
+          onCountChange={setCommentCount}
+          focusCommentId={isFocusTarget ? focusCommentId : undefined}
+        />
       )}
     </article>
   );

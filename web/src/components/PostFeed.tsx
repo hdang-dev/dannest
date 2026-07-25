@@ -7,10 +7,20 @@ type Props = {
   posts: Post[];
   onEdit: (post: Post) => void;
   onLike: (post: Post) => void;
+  // From a notification deep link — the one post (and, for a reply, comment) to scroll to.
+  focusPostId?: string | null;
+  focusCommentId?: string | null;
   emptyLabel?: string;
 };
 
-export default function PostFeed({ posts, onEdit, onLike, emptyLabel = "Nothing here yet." }: Props) {
+export default function PostFeed({
+  posts,
+  onEdit,
+  onLike,
+  focusPostId,
+  focusCommentId,
+  emptyLabel = "Nothing here yet.",
+}: Props) {
   if (posts.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
@@ -22,7 +32,14 @@ export default function PostFeed({ posts, onEdit, onLike, emptyLabel = "Nothing 
   return (
     <div className="flex flex-col gap-4">
       {posts.map((post) => (
-        <PostCard key={post.id} post={post} onEdit={onEdit} onLike={onLike} />
+        <PostCard
+          key={post.id}
+          post={post}
+          onEdit={onEdit}
+          onLike={onLike}
+          focusPostId={focusPostId}
+          focusCommentId={focusCommentId}
+        />
       ))}
     </div>
   );

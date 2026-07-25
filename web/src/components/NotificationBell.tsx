@@ -1,55 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type Notification,
+} from "@/lib/notifications";
 import { formatRelativeTime } from "@/lib/time";
 
-type Notification = {
-  id: string;
-  actor: string;
-  message: string;
-  createdAt: string;
-  read: boolean;
-};
-
-// Mock data — replace with a real feed (poll or WebSocket) once the backend endpoint exists.
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: "1",
-    actor: "Mia Tran",
-    message: "liked your post \"Sunday hike notes\"",
-    createdAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: "2",
-    actor: "Kevin Pham",
-    message: "commented: \"This is such a great spot!\"",
-    createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: "3",
-    actor: "Linh Do",
-    message: "added your post to \"Weekend trips\"",
-    createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-];
+const POLL_INTERVAL_MS = 20_000;
 
 export default function NotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const page = await listNotifications({ size: 20 });
+        if (!cancelled) setNotifications(page.content);
+      } catch {
+        // Transient failure — the next poll will retry.
+      }
+    }
+    load();
+    const interval = setInterval(load, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   function markAllRead() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllNotificationsRead().catch(() => {});
   }
 
-  function markRead(id: string) {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  function openNotification(n: Notification) {
+    setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    if (!n.read) markNotificationRead(n.id).catch(() => {});
+    setOpen(false);
+    router.push(n.targetUrl);
   }
 
   return (
@@ -100,7 +97,7 @@ export default function NotificationBell() {
                 notifications.map((n) => (
                   <button
                     key={n.id}
-                    onClick={() => markRead(n.id)}
+                    onClick={() => openNotification(n)}
                     className="flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
                   >
                     {!n.read && (
@@ -109,7 +106,7 @@ export default function NotificationBell() {
                     <span className={n.read ? "ml-5" : ""}>
                       <span className="text-sm text-slate-700 dark:text-slate-200">
                         <span className="font-semibold text-slate-900 dark:text-slate-100">
-                          {n.actor}
+                          {n.actorUsername}
                         </span>{" "}
                         {n.message}
                       </span>

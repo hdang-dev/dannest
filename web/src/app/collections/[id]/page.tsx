@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import PostFeed from "@/components/PostFeed";
@@ -16,12 +16,17 @@ import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
 import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
+import { followCollection, getFollowStatus, unfollowCollection } from "@/lib/follows";
 
 type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
 
 export default function CollectionPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // From a notification deep link — scroll to (and, for a reply, open) this post/comment.
+  const focusPostId = searchParams.get("post");
+  const focusCommentId = searchParams.get("comment");
   const { user } = useAuth();
   const [collection, setCollection] = useState<Collection | null | undefined>(undefined);
   const [posts, setPosts] = useState<Post[] | null>(null);
@@ -45,6 +50,37 @@ export default function CollectionPage() {
 
   const mine = !!user && !!collection && collection.ownerId === user.id;
   const [from, to] = gradientFor(id);
+
+  // Whether the caller follows this collection — only relevant once it's loaded and
+  // isn't the caller's own (a visible-but-not-mine collection is always PUBLIC).
+  const [following, setFollowing] = useState<boolean | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+
+  useEffect(() => {
+    if (!collection || mine) return;
+    let cancelled = false;
+    getFollowStatus(id)
+      .then((s) => !cancelled && setFollowing(s.following))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [collection, mine, id]);
+
+  // Optimistic follow toggle — flip locally, then persist (revert on failure).
+  async function toggleFollow() {
+    if (following === null || followBusy) return;
+    const next = !following;
+    setFollowBusy(true);
+    setFollowing(next);
+    try {
+      await (next ? followCollection(id) : unfollowCollection(id));
+    } catch {
+      setFollowing(!next);
+    } finally {
+      setFollowBusy(false);
+    }
+  }
 
   // Optimistic like toggle — flip locally, then persist (revert on failure).
   function toggleLike(post: Post) {
@@ -168,26 +204,42 @@ export default function CollectionPage() {
                     </h1>
                   </div>
 
-                  {/* owner badge — distinct from each post's author (a public collection
-                      may later hold posts from multiple contributors). */}
-                  <Link
-                    href={`/users/${collection.ownerId}`}
-                    className="flex shrink-0 items-center gap-2 rounded-full bg-black/30 py-1 pl-1 pr-3 backdrop-blur-sm transition hover:bg-black/50"
-                  >
-                    <div className="shrink-0 rounded-full ring-2 ring-white/80">
-                      {collection.ownerAvatarUrl ? (
-                        <div
-                          className="h-8 w-8 rounded-full"
-                          style={coverStyle(collection.ownerAvatarUrl, collection.ownerAvatarCrop ?? FULL_CROP)}
-                        />
-                      ) : (
-                        <DefaultAvatarIcon size={32} />
-                      )}
-                    </div>
-                    <span className="max-w-24 truncate text-xs font-medium text-white">
-                      {collection.ownerUsername}
-                    </span>
-                  </Link>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/* owner badge — distinct from each post's author (a public collection
+                        may later hold posts from multiple contributors). */}
+                    <Link
+                      href={`/users/${collection.ownerId}`}
+                      className="flex shrink-0 items-center gap-2 rounded-full bg-black/30 py-1 pl-1 pr-3 backdrop-blur-sm transition hover:bg-black/50"
+                    >
+                      <div className="shrink-0 rounded-full ring-2 ring-white/80">
+                        {collection.ownerAvatarUrl ? (
+                          <div
+                            className="h-8 w-8 rounded-full"
+                            style={coverStyle(collection.ownerAvatarUrl, collection.ownerAvatarCrop ?? FULL_CROP)}
+                          />
+                        ) : (
+                          <DefaultAvatarIcon size={32} />
+                        )}
+                      </div>
+                      <span className="max-w-24 truncate text-xs font-medium text-white">
+                        {collection.ownerUsername}
+                      </span>
+                    </Link>
+
+                    {!mine && (
+                      <button
+                        onClick={toggleFollow}
+                        disabled={following === null || followBusy}
+                        className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-sm transition disabled:opacity-50 ${
+                          following
+                            ? "bg-black/30 text-white hover:bg-black/50"
+                            : "bg-teal-500/90 text-white hover:bg-teal-500"
+                        }`}
+                      >
+                        {following ? "Following" : "Follow"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -207,6 +259,8 @@ export default function CollectionPage() {
                   posts={posts}
                   onEdit={(post) => setComposer({ mode: "edit", post })}
                   onLike={toggleLike}
+                  focusPostId={focusPostId}
+                  focusCommentId={focusCommentId}
                   emptyLabel="No posts in this collection yet."
                 />
               )}

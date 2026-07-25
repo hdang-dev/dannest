@@ -11,6 +11,8 @@ import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.media.Media;
 import com.dannest.media.dto.CropDto;
+import com.dannest.notification.NotificationService;
+import com.dannest.notification.NotificationType;
 import com.dannest.post.Post;
 import com.dannest.post.PostRepository;
 import com.dannest.user.User;
@@ -36,12 +38,17 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public CommentService(
-            CommentRepository commentRepository, PostRepository postRepository, UserRepository userRepository) {
+            CommentRepository commentRepository,
+            PostRepository postRepository,
+            UserRepository userRepository,
+            NotificationService notificationService) {
         this.commentRepository = commentRepository;
         this.postRepository = postRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +78,11 @@ public class CommentService {
 
         User author = userRepository.getReferenceById(userId);
         Comment comment = commentRepository.save(new Comment(post, author, parent, request.content().trim()));
+        if (parent != null) {
+            notificationService.notify(
+                    parent.getAuthor().getId(), userId, NotificationType.COMMENT_REPLY,
+                    post.getCollection().getId(), postId, comment.getId());
+        }
         return toResponse(comment);
     }
 

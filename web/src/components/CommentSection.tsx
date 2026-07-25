@@ -95,13 +95,199 @@ function Composer({
   );
 }
 
+type CommentRowProps = {
+  comment: Comment;
+  isReply: boolean;
+  repliesOf: (id: string) => Comment[];
+  currentUserId: string | null;
+  currentUserAvatarUrl: string | null;
+  currentUserAvatarCrop: Crop | null;
+  highlightId: string | null;
+  registerRef: (id: string, el: HTMLDivElement | null) => void;
+  editingId: string | null;
+  editText: string;
+  onStartEdit: (comment: Comment) => void;
+  onEditTextChange: (text: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string) => void;
+  replyingTo: string | null;
+  replyText: string;
+  replying: boolean;
+  onToggleReply: (id: string) => void;
+  onReplyTextChange: (text: string) => void;
+  onSubmitReply: (parentId: string) => void;
+  menuOpenId: string | null;
+  onToggleMenu: (id: string | null) => void;
+  onDelete: (id: string) => void;
+};
+
+/**
+ * One comment (or reply) row: content, actions, its reply composer, and its own
+ * replies. Declared at module scope (not nested in CommentSection) so its identity
+ * stays stable across renders — otherwise every keystroke in a reply/edit box would
+ * remount the whole row, including the textarea the user is typing in, resetting its
+ * cursor to the start on each character.
+ */
+function CommentRow(props: CommentRowProps) {
+  const {
+    comment,
+    isReply,
+    repliesOf,
+    currentUserId,
+    currentUserAvatarUrl,
+    currentUserAvatarCrop,
+    highlightId,
+    registerRef,
+    editingId,
+    editText,
+    onStartEdit,
+    onEditTextChange,
+    onCancelEdit,
+    onSaveEdit,
+    replyingTo,
+    replyText,
+    replying,
+    onToggleReply,
+    onReplyTextChange,
+    onSubmitReply,
+    menuOpenId,
+    onToggleMenu,
+    onDelete,
+  } = props;
+
+  const owned = !!currentUserId && currentUserId === comment.authorId;
+  const edited = comment.updatedAt !== comment.createdAt;
+
+  return (
+    <div
+      ref={(el) => registerRef(comment.id, el)}
+      className={`flex gap-2.5 ${isReply ? "mt-2 ml-9" : "mt-3 first:mt-0"}`}
+    >
+      <Link href={`/users/${comment.authorId}`} className="shrink-0">
+        <Avatar url={comment.authorAvatarUrl} crop={comment.authorAvatarCrop} size={isReply ? 26 : 32} />
+      </Link>
+      <div className="min-w-0 flex-1">
+        {editingId === comment.id ? (
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <Composer
+                placeholder="Edit your comment…"
+                value={editText}
+                onChange={onEditTextChange}
+                onSubmit={() => onSaveEdit(comment.id)}
+                submitting={false}
+                autoFocus
+              />
+            </div>
+            <button
+              onClick={onCancelEdit}
+              className="mb-1.5 shrink-0 text-xs font-medium text-slate-400 hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div
+            className={`inline-block rounded-2xl px-3 py-1.5 transition ${
+              highlightId === comment.id
+                ? "bg-teal-100 ring-2 ring-teal-400 dark:bg-teal-950/50"
+                : "bg-slate-100 dark:bg-slate-800"
+            }`}
+          >
+            <Link
+              href={`/users/${comment.authorId}`}
+              className="text-xs font-semibold text-slate-900 hover:underline dark:text-slate-100"
+            >
+              {comment.authorUsername}
+            </Link>
+            <p className="whitespace-pre-wrap wrap-break-word text-sm leading-snug text-slate-700 dark:text-slate-200">
+              {comment.content}
+            </p>
+          </div>
+        )}
+
+        {editingId !== comment.id && (
+          <div className="mt-0.5 flex items-center gap-3 px-1 text-[11px] text-slate-400">
+            <span>
+              {formatRelativeTime(comment.createdAt)}
+              {edited && " · edited"}
+            </span>
+            {!isReply && (
+              <button onClick={() => onToggleReply(comment.id)} className="font-semibold hover:underline">
+                Reply
+              </button>
+            )}
+            {owned && (
+              <div className="relative">
+                <button
+                  onClick={() => onToggleMenu(menuOpenId === comment.id ? null : comment.id)}
+                  className="font-semibold hover:underline"
+                >
+                  More
+                </button>
+                {menuOpenId === comment.id && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => onToggleMenu(null)} />
+                    <div className="absolute left-0 top-full z-40 mt-1 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                      <button
+                        onClick={() => {
+                          onToggleMenu(null);
+                          onStartEdit(comment);
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          onToggleMenu(null);
+                          onDelete(comment.id);
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {replyingTo === comment.id && (
+          <div className="mt-2 flex gap-2.5">
+            <Avatar url={currentUserAvatarUrl} crop={currentUserAvatarCrop} size={26} />
+            <div className="min-w-0 flex-1">
+              <Composer
+                placeholder={`Reply to ${comment.authorUsername}…`}
+                value={replyText}
+                onChange={onReplyTextChange}
+                onSubmit={() => onSubmitReply(comment.id)}
+                submitting={replying}
+                autoFocus
+              />
+            </div>
+          </div>
+        )}
+
+        {repliesOf(comment.id).map((reply) => (
+          <CommentRow key={reply.id} {...props} comment={reply} isReply />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   postId: string;
   initialCount: number;
   onCountChange?: (count: number) => void;
+  // From a notification deep link — the reply to scroll to and highlight once loaded.
+  focusCommentId?: string | null;
 };
 
-export default function CommentSection({ postId, initialCount, onCountChange }: Props) {
+export default function CommentSection({ postId, initialCount, onCountChange, focusCommentId }: Props) {
   const { user } = useAuth();
 
   const [comments, setComments] = useState<Comment[] | null>(null);
@@ -127,24 +313,75 @@ export default function CommentSection({ postId, initialCount, onCountChange }: 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
+  // Scroll-to/highlight target from a notification deep link.
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    listComments(postId, { page: 0, size: PAGE_SIZE })
-      .then((p) => {
+
+    function applyFirstPage(p: { content: Comment[]; last: boolean; totalElements: number }) {
+      if (cancelled) return;
+      setComments(p.content);
+      setPage(0);
+      setHasMore(!p.last);
+      setTotal(p.totalElements);
+      setPinnedIds(new Set(p.content.map((c) => c.id)));
+      onCountChange?.(p.totalElements);
+    }
+
+    // Deep-linking to a reply: comments and replies share one flat, oldest-first
+    // stream, so a reply's parent always lands on an earlier or equal page — keep
+    // paging until the target shows up (or we run out of comments).
+    async function loadUntilFound(targetId: string) {
+      try {
+        let acc: Comment[] = [];
+        let pageIndex = 0;
+        let isLast = false;
+        let totalElements = 0;
+        while (!isLast && !acc.some((c) => c.id === targetId)) {
+          const p = await listComments(postId, { page: pageIndex, size: PAGE_SIZE });
+          acc = [...acc, ...p.content];
+          isLast = p.last;
+          totalElements = p.totalElements;
+          pageIndex = p.page + 1;
+        }
         if (cancelled) return;
-        setComments(p.content);
-        setPage(0);
-        setHasMore(!p.last);
-        setTotal(p.totalElements);
-        setPinnedIds(new Set(p.content.map((c) => c.id)));
-        onCountChange?.(p.totalElements);
-      })
-      .catch(() => !cancelled && setError("Couldn't load comments."));
+        setComments(acc);
+        setPage(pageIndex - 1);
+        setHasMore(!isLast);
+        setTotal(totalElements);
+        setPinnedIds(new Set(acc.map((c) => c.id)));
+        onCountChange?.(totalElements);
+      } catch {
+        if (!cancelled) setError("Couldn't load comments.");
+      }
+    }
+
+    if (focusCommentId) {
+      loadUntilFound(focusCommentId);
+    } else {
+      listComments(postId, { page: 0, size: PAGE_SIZE })
+        .then(applyFirstPage)
+        .catch(() => !cancelled && setError("Couldn't load comments."));
+    }
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
+
+  // Once the target reply is actually in `comments`, scroll to it and flash a highlight.
+  useEffect(() => {
+    if (!focusCommentId || !comments?.some((c) => c.id === focusCommentId)) return;
+    rowRefs.current[focusCommentId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const showTimer = setTimeout(() => setHighlightId(focusCommentId), 0);
+    const hideTimer = setTimeout(() => setHighlightId(null), 2000);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [comments, focusCommentId]);
 
   function fetchNextPage() {
     setLoadingMore(true);
@@ -242,6 +479,24 @@ export default function CommentSection({ postId, initialCount, onCountChange }: 
     deleteComment(id).catch(() => setError("Couldn't delete that comment."));
   }
 
+  function toggleReply(id: string) {
+    setReplyingTo((cur) => (cur === id ? null : id));
+    setReplyText("");
+  }
+
+  function startEdit(comment: Comment) {
+    setEditingId(comment.id);
+    setEditText(comment.content);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  function registerRef(id: string, el: HTMLDivElement | null) {
+    rowRefs.current[id] = el;
+  }
+
   if (comments === null) {
     return (
       <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
@@ -256,129 +511,6 @@ export default function CommentSection({ postId, initialCount, onCountChange }: 
   // "See less" only makes sense once there's something extra loaded to hide.
   const canCollapse = !collapsed && comments.some((c) => !pinnedIds.has(c.id));
 
-  function CommentRow({ comment, isReply }: { comment: Comment; isReply: boolean }) {
-    const owned = !!user && user.id === comment.authorId;
-    const edited = comment.updatedAt !== comment.createdAt;
-
-    return (
-      <div className={`flex gap-2.5 ${isReply ? "mt-2 ml-9" : "mt-3 first:mt-0"}`}>
-        <Link href={`/users/${comment.authorId}`} className="shrink-0">
-          <Avatar url={comment.authorAvatarUrl} crop={comment.authorAvatarCrop} size={isReply ? 26 : 32} />
-        </Link>
-        <div className="min-w-0 flex-1">
-          {editingId === comment.id ? (
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <Composer
-                  placeholder="Edit your comment…"
-                  value={editText}
-                  onChange={setEditText}
-                  onSubmit={() => saveEdit(comment.id)}
-                  submitting={false}
-                  autoFocus
-                />
-              </div>
-              <button
-                onClick={() => setEditingId(null)}
-                className="mb-1.5 shrink-0 text-xs font-medium text-slate-400 hover:underline"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="inline-block rounded-2xl bg-slate-100 px-3 py-1.5 dark:bg-slate-800">
-              <Link
-                href={`/users/${comment.authorId}`}
-                className="text-xs font-semibold text-slate-900 hover:underline dark:text-slate-100"
-              >
-                {comment.authorUsername}
-              </Link>
-              <p className="whitespace-pre-wrap wrap-break-word text-sm leading-snug text-slate-700 dark:text-slate-200">
-                {comment.content}
-              </p>
-            </div>
-          )}
-
-          {editingId !== comment.id && (
-            <div className="mt-0.5 flex items-center gap-3 px-1 text-[11px] text-slate-400">
-              <span>
-                {formatRelativeTime(comment.createdAt)}
-                {edited && " · edited"}
-              </span>
-              {!isReply && (
-                <button
-                  onClick={() => {
-                    setReplyingTo(replyingTo === comment.id ? null : comment.id);
-                    setReplyText("");
-                  }}
-                  className="font-semibold hover:underline"
-                >
-                  Reply
-                </button>
-              )}
-              {owned && (
-                <div className="relative">
-                  <button
-                    onClick={() => setMenuOpenId(menuOpenId === comment.id ? null : comment.id)}
-                    className="font-semibold hover:underline"
-                  >
-                    More
-                  </button>
-                  {menuOpenId === comment.id && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setMenuOpenId(null)} />
-                      <div className="absolute left-0 top-full z-40 mt-1 w-28 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
-                        <button
-                          onClick={() => {
-                            setMenuOpenId(null);
-                            setEditingId(comment.id);
-                            setEditText(comment.content);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMenuOpenId(null);
-                            remove(comment.id);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {replyingTo === comment.id && (
-            <div className="mt-2 flex gap-2.5">
-              <Avatar url={user?.avatarUrl ?? null} crop={user?.avatarCrop ?? null} size={26} />
-              <div className="min-w-0 flex-1">
-                <Composer
-                  placeholder={`Reply to ${comment.authorUsername}…`}
-                  value={replyText}
-                  onChange={setReplyText}
-                  onSubmit={() => postReply(comment.id)}
-                  submitting={replying}
-                  autoFocus
-                />
-              </div>
-            </div>
-          )}
-
-          {repliesOf(comment.id).map((reply) => (
-            <CommentRow key={reply.id} comment={reply} isReply />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
       {error && <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
@@ -388,7 +520,32 @@ export default function CommentSection({ postId, initialCount, onCountChange }: 
       ) : (
         <div>
           {topLevel.map((c) => (
-            <CommentRow key={c.id} comment={c} isReply={false} />
+            <CommentRow
+              key={c.id}
+              comment={c}
+              isReply={false}
+              repliesOf={repliesOf}
+              currentUserId={user?.id ?? null}
+              currentUserAvatarUrl={user?.avatarUrl ?? null}
+              currentUserAvatarCrop={user?.avatarCrop ?? null}
+              highlightId={highlightId}
+              registerRef={registerRef}
+              editingId={editingId}
+              editText={editText}
+              onStartEdit={startEdit}
+              onEditTextChange={setEditText}
+              onCancelEdit={cancelEdit}
+              onSaveEdit={saveEdit}
+              replyingTo={replyingTo}
+              replyText={replyText}
+              replying={replying}
+              onToggleReply={toggleReply}
+              onReplyTextChange={setReplyText}
+              onSubmitReply={postReply}
+              menuOpenId={menuOpenId}
+              onToggleMenu={setMenuOpenId}
+              onDelete={remove}
+            />
           ))}
         </div>
       )}
