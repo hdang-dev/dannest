@@ -1,0 +1,55 @@
+name: keep-render-warm
+
+# Pings both Render free-tier services (web + backend) on a schedule so
+# neither spins down from 15 minutes of inactivity. Best-effort workaround
+# (unsupported by Render), not a guarantee.
+on:
+  schedule:
+    # Every 5 minutes (GitHub's enforced minimum), offset to :03/:08/:13...
+    # to avoid the congestion pile-up at round-number minutes (esp. :00).
+    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: keep-render-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            url: https://dannest-punh.onrender.com/
+          - name: backend
+            url: https://dannest-service-jauh.onrender.com/actuator/health
+    steps:
+      - name: Ping ${{ matrix.name }} (with retry for cold start)
+        env:
+          HEALTH_URL: ${{ matrix.url }}
+        run: |
+          set -eo pipefail
+          max_attempts=4
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Attempt $attempt/$max_attempts: GET $HEALTH_URL"
+            if code=$(curl -sS -o /tmp/health_body.json -w '%{http_code}' --max-time 20 "$HEALTH_URL"); then
+              echo "HTTP $code"
+              cat /tmp/health_body.json
+              echo
+              if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+                echo "Service is warm."
+                exit 0
+              fi
+            else
+              echo "curl failed (timeout or connection error)"
+            fi
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "Not healthy yet — waiting 15s for Render cold start..."
+              sleep 15
+            fi
+          done
+          echo "::error::Service did not become healthy after $max_attempts attempts"
+          exit 1
