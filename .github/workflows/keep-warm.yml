@@ -1,15 +1,11 @@
 name: keep-render-warm
 
-# Pings both Render free-tier services (web + backend) on a schedule so
-# neither spins down from 15 minutes of inactivity. Best-effort workaround
-# (unsupported by Render), not a guarantee.
+# Manual-only: pings both Render free-tier services (web + backend) so
+# neither spins down from 15 minutes of inactivity. The actual scheduled
+# keep-warm job now runs on UptimeRobot (real 5-min clock, not subject to
+# GitHub's best-effort — and often ~1hr-delayed in practice — scheduler).
+# This workflow is kept for on-demand testing via workflow_dispatch.
 on:
-  schedule:
-    # Every 10 minutes (Render times out at 15), offset to :04/:14/:24...
-    # to avoid the congestion pile-up at round-number minutes (esp. :00).
-    # Note: GitHub's schedule trigger is best-effort — in practice it can
-    # fire far less often than this under load. See keep-warm run history.
-    - cron: "4,14,24,34,44,54 * * * *"
   workflow_dispatch: {}
 
 concurrency:
