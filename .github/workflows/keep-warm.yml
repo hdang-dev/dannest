@@ -5,9 +5,11 @@ name: keep-render-warm
 # (unsupported by Render), not a guarantee.
 on:
   schedule:
-    # Every 5 minutes (GitHub's enforced minimum), offset to :03/:08/:13...
+    # Every 10 minutes (Render times out at 15), offset to :04/:14/:24...
     # to avoid the congestion pile-up at round-number minutes (esp. :00).
-    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
+    # Note: GitHub's schedule trigger is best-effort — in practice it can
+    # fire far less often than this under load. See keep-warm run history.
+    - cron: "4,14,24,34,44,54 * * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -17,7 +19,7 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
@@ -32,10 +34,15 @@ jobs:
           HEALTH_URL: ${{ matrix.url }}
         run: |
           set -eo pipefail
-          max_attempts=4
+          # After a long idle gap (GitHub's scheduler doesn't reliably fire
+          # every 5 min — real-world gaps can run 1-2+ hours), Render's cold
+          # boot (image pull + JVM start for the backend) can take longer
+          # than a "typical" 30-60s cold start. Budget generously so a slow
+          # but real wake-up isn't reported as a failure.
+          max_attempts=10
           for attempt in $(seq 1 "$max_attempts"); do
             echo "Attempt $attempt/$max_attempts: GET $HEALTH_URL"
-            if code=$(curl -sS -o /tmp/health_body.json -w '%{http_code}' --max-time 20 "$HEALTH_URL"); then
+            if code=$(curl -sS -o /tmp/health_body.json -w '%{http_code}' --max-time 25 "$HEALTH_URL"); then
               echo "HTTP $code"
               cat /tmp/health_body.json
               echo
@@ -47,8 +54,8 @@ jobs:
               echo "curl failed (timeout or connection error)"
             fi
             if [ "$attempt" -lt "$max_attempts" ]; then
-              echo "Not healthy yet — waiting 15s for Render cold start..."
-              sleep 15
+              echo "Not healthy yet — waiting 20s for Render cold start..."
+              sleep 20
             fi
           done
           echo "::error::Service did not become healthy after $max_attempts attempts"
