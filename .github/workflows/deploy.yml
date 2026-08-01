@@ -12,6 +12,7 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       core: ${{ steps.filter.outputs.core }}
+      notification: ${{ steps.filter.outputs.notification }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -22,6 +23,8 @@ jobs:
               - 'web/**'
             core:
               - 'services/core/**'
+            notification:
+              - 'services/notification/**'
 
   # ---- WEB: check, then deploy — only if web/ changed ----
   check-web:
@@ -99,3 +102,50 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             "https://api.render.com/v1/services/srv-d955uk0js32c73ffde7g/deploys"
+
+  # ---- NOTIFICATION: check, then deploy — only if services/notification/ changed ----
+  check-notification:
+    needs: changes
+    if: ${{ needs.changes.outputs.notification == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dannest
+          POSTGRES_PASSWORD: dannest
+          POSTGRES_DB: dannest_notification
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dannest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: services/notification
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/dannest_notification
+      DB_USER: dannest
+      DB_PASSWORD: dannest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew build --no-daemon
+
+  deploy-notification:
+    needs: [changes, check-notification]
+    if: ${{ needs.changes.outputs.notification == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — notification
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/srv-d9mqrofqj5pc73dk07k0/deploys"

@@ -1,27 +1,28 @@
 # =============================================================================
 #  DanNest infrastructure on Render, defined as code.
-#  `terraform apply` CREATES these two services (they don't exist yet).
+#  `terraform apply` only CREATES services that don't exist yet.
 #
-#  NOTE (free tier): the Render provider can't UPDATE free-tier services
-#  (it sends a "maintenance mode" field the free tier rejects). So env-var
-#  changes below are the source of truth, but are applied to live services via
-#  the Render API until these move to a paid tier. Keep this file in sync.
+#  NOTE (free tier): the Render Terraform provider can't UPDATE a free-tier
+#  service that already exists (its update call sends a "maintenance mode"
+#  field the free tier rejects). This file is still the source of truth for
+#  what should be configured — but pushing a change to an existing service
+#  means calling the Render REST API directly (e.g. `PATCH
+#  /v1/services/{id}`, `PUT /v1/services/{id}/env-vars/{key}`), not
+#  `terraform apply`. That direct-API path isn't subject to the same
+#  rejection. Keep this file in sync regardless, so `terraform plan` always
+#  reflects reality.
 # =============================================================================
 
 # The two live URLs reference each other (CORS needs the web URL; the web app
 # needs the backend URL). Referencing the resources' .url attributes both ways
 # would be a dependency cycle, so we pin the known stable URLs here.
 locals {
-  web_url     = "https://dannest-punh.onrender.com"
-  backend_url = "https://dannest-service-jauh.onrender.com"
+  web_url          = "https://dannest-punh.onrender.com"
+  backend_url      = "https://dannest-service-jauh.onrender.com"
+  notification_url = "https://dannest-notification.onrender.com"
 }
 
 # ---- Backend API (Core): Docker service built from services/core/Dockerfile ----
-# NOTE: this path was "./service" before the services/ restructure. Per the free-tier
-# limitation above, `terraform apply` CANNOT push this change to the already-existing
-# live service — the Dockerfile path / context must also be updated by hand in the
-# Render dashboard (Settings → Build), or the next deploy will fail looking for a
-# service/Dockerfile that no longer exists.
 resource "render_web_service" "backend" {
   name   = "dannest-service"
   plan   = "free"
@@ -69,13 +70,6 @@ resource "render_web_service" "backend" {
 }
 
 # ---- Notification service: Docker service built from services/notification/Dockerfile ----
-# Brand new resource — this is a CREATE, so (unlike the backend edits above) the free-tier
-# limitation doesn't block `terraform apply` from provisioning it the first time.
-#
-# NOTE: its URL is only known after Render creates it (see the `notification_url` output
-# below). The web frontend's NEXT_PUBLIC_NOTIFICATION_API_URL can't be wired in until then —
-# and because that means editing the *already-existing* web service, that step will hit the
-# same free-tier "can't update" limitation and has to be done by hand in the dashboard.
 resource "render_web_service" "notification" {
   name   = "dannest-notification"
   plan   = "free"
@@ -135,8 +129,9 @@ resource "render_web_service" "web" {
     NODE_VERSION = { value = "22" }
 
     # NEXT_PUBLIC_* are read at BUILD time and baked into the frontend bundle.
-    NEXT_PUBLIC_GOOGLE_CLIENT_ID = { value = var.google_client_id }
-    NEXT_PUBLIC_API_URL          = { value = local.backend_url }
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID     = { value = var.google_client_id }
+    NEXT_PUBLIC_API_URL              = { value = local.backend_url }
+    NEXT_PUBLIC_NOTIFICATION_API_URL = { value = local.notification_url }
   }
 }
 
@@ -149,8 +144,6 @@ output "web_url" {
   value = render_web_service.web.url
 }
 
-# Once you have this, paste it into the web service's NEXT_PUBLIC_NOTIFICATION_API_URL
-# by hand in the Render dashboard (see the note on the notification resource above).
 output "notification_url" {
   value = render_web_service.notification.url
 }
