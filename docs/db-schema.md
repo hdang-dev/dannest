@@ -1,8 +1,15 @@
 # DanNest — Database Schema
 
-The schema for DanNest (social + collections). Source of truth for the fields is
-`dannest-project-spec.md`; the tables are created by the Flyway migration
-[`services/core/src/main/resources/db/migration/V1__init.sql`](../services/core/src/main/resources/db/migration/V1__init.sql)
+DanNest is split into two services, each with its **own** Postgres database —
+see [Lesson 4](lesson-4-microservices.md). This doc covers **Core's**
+database (social + collections); the notification service's much smaller
+schema is at the bottom.
+
+## Core's database
+
+Source of truth for the fields is `dannest-project-spec.md`; the tables are
+created by the Flyway migrations in
+[`services/core/src/main/resources/db/migration/`](../services/core/src/main/resources/db/migration/)
 and mapped by JPA entities under `services/core/src/main/java/com/dannest/`.
 
 ## Base entity
@@ -28,6 +35,8 @@ erDiagram
     POSTS ||--o{ COMMENTS : has
     COMMENTS ||--o{ COMMENTS : "parent of"
     POSTS ||--o{ POST_LIKES : receives
+    USERS ||--o{ COLLECTION_FOLLOWS : follows
+    COLLECTIONS ||--o{ COLLECTION_FOLLOWS : "followed by"
 
     USERS {
         uuid id PK
@@ -101,6 +110,13 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+    COLLECTION_FOLLOWS {
+        uuid id PK
+        uuid follower_id FK
+        uuid collection_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
 ```
 
 ## Tables
@@ -114,6 +130,7 @@ erDiagram
 | `post_media` | post ↔ image join | own `id`, ordered by `display_order`, unique `(post_id, media_id)` |
 | `comments` | replies on a post | `parent_comment_id` (nullable) → nested threads |
 | `post_likes` | a user's like | own `id`, unique `(post_id, user_id)` |
+| `collection_follows` | a user following a collection (to be notified of new posts) | `follower_id` → `users`; `collection_id` → `collections`; unique `(follower_id, collection_id)` |
 
 ## Image crop / zoom (framing)
 
@@ -143,4 +160,28 @@ transitional `collections.cover_url` (V4), which will be migrated to an EXTERNAL
 - **Circular FK** — `users.avatar_media_id ↔ media.owner_id`; `avatar_media_id` is
   nullable and set after the media row exists (the migration adds that FK last).
 - **Deletes** — `post_media`, `comments`, `post_likes` cascade when their `post` is deleted.
-- **Not yet** (spec *Future Features*): saves/bookmarks, follows, tags, search.
+- **Not yet** (spec *Future Features*): saves/bookmarks, tags, search.
+
+## Notification service's database
+
+A separate, much smaller Postgres owned by `services/notification` —
+[`services/notification/src/main/resources/db/migration/V1__init.sql`](../services/notification/src/main/resources/db/migration/V1__init.sql).
+One table, **no foreign keys to Core's tables** (different database — Postgres
+can't enforce a FK across a network boundary, and this service shouldn't be
+querying Core's database anyway):
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `recipient_id`, `actor_id` | uuid | reference `users.id` in Core's DB — logical only, no FK |
+| `actor_username`, `actor_avatar_url` | text | **denormalized** — copied from the event at write time, not looked up |
+| `type` | varchar(20) | `NEW_POST` \| `COMMENT_REPLY` |
+| `collection_id`, `collection_name` | uuid, text | `collection_name` denormalized, same reason as actor fields |
+| `post_id`, `comment_id` | uuid | `comment_id` nullable |
+| `read_at` | timestamptz, nullable | |
+| `created_at`, `updated_at` | timestamptz | |
+
+Filled entirely by consuming `DannestEvent` messages off RabbitMQ (see
+[Lesson 4](lesson-4-microservices.md)) — this service never queries Core's
+database to render a notification, which is *why* the denormalized columns
+exist instead of just storing IDs.
