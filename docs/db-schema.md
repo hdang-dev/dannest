@@ -2,8 +2,8 @@
 
 The schema for DanNest (social + collections). Source of truth for the fields is
 `dannest-project-spec.md`; the tables are created by the Flyway migration
-[`service/src/main/resources/db/migration/V1__init.sql`](../service/src/main/resources/db/migration/V1__init.sql)
-and mapped by JPA entities under `service/src/main/java/com/dannest/`.
+[`services/core/src/main/resources/db/migration/V1__init.sql`](../services/core/src/main/resources/db/migration/V1__init.sql)
+and mapped by JPA entities under `services/core/src/main/java/com/dannest/`.
 
 ## Base entity
 

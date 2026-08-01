@@ -8,6 +8,11 @@ db_url      = "jdbc:postgresql://YOUR-NEON-HOST/neondb?sslmode=require"
 db_user     = "neondb_owner"
 db_password = "npg_xxxxxxxxxxxxxx"
 
+# ---- Notification service's own database (separate Neon instance) ----
+notification_db_url      = "jdbc:postgresql://YOUR-OTHER-NEON-HOST/neondb?sslmode=require"
+notification_db_user     = "neondb_owner"
+notification_db_password = "npg_xxxxxxxxxxxxxx"
+
 # Generate with: openssl rand -hex 48
 jwt_secret = "your-long-random-secret"
 
@@ -18,3 +23,11 @@ r2_access_key      = "your_access_key_id"
 r2_secret_key      = "your_secret_access_key"
 r2_bucket          = "dannest-media"
 r2_public_base_url = "https://pub-xxxx.r2.dev"
+
+# ---- RabbitMQ (CloudAMQP free tier) ----
+# From the CloudAMQP dashboard's "AMQP details" panel — use the DNS load-balanced
+# Cluster host (not a specific node), and the TLS port (5671).
+rabbitmq_host      = "your-instance.rmq.cloudamqp.com"
+rabbitmq_username  = "your-vhost-name"
+rabbitmq_password  = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+rabbitmq_vhost     = "your-vhost-name"

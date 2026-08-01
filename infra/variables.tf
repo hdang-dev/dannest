@@ -33,6 +33,22 @@ variable "db_password" {
   sensitive   = true
 }
 
+variable "notification_db_url" {
+  description = "JDBC URL for the notification service's own Neon database"
+  type        = string
+}
+
+variable "notification_db_user" {
+  description = "Notification service's Neon database user"
+  type        = string
+}
+
+variable "notification_db_password" {
+  description = "Notification service's Neon database password"
+  type        = string
+  sensitive   = true
+}
+
 # ---- Auth (Google sign-in) ----
 
 variable "google_client_id" {
@@ -74,5 +90,28 @@ variable "r2_bucket" {
 
 variable "r2_public_base_url" {
   description = "R2 bucket public base URL (pub-*.r2.dev or custom domain), no trailing slash"
+  type        = string
+}
+
+# ---- Message broker (RabbitMQ / CloudAMQP) ----
+
+variable "rabbitmq_host" {
+  description = "RabbitMQ hostname (CloudAMQP: the DNS load-balanced Cluster host, not a specific node)"
+  type        = string
+}
+
+variable "rabbitmq_username" {
+  description = "RabbitMQ username (CloudAMQP: same value as the vhost on the free plan)"
+  type        = string
+}
+
+variable "rabbitmq_password" {
+  description = "RabbitMQ password"
+  type        = string
+  sensitive   = true
+}
+
+variable "rabbitmq_vhost" {
+  description = "RabbitMQ virtual host (CloudAMQP: same value as the username on the free plan)"
   type        = string
 }

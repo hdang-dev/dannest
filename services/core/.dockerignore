@@ -5,4 +5,3 @@ data/
 .git/
 .idea/
 .vscode/
-docker-compose.yml

@@ -1,0 +1,45 @@
+name: dannest
+
+# Local dev infra shared by all backend services under services/. Each Spring Boot
+# app still runs on the host via `./gradlew bootRun` — only its dependencies
+# (Postgres, RabbitMQ) run in Docker.
+services:
+    postgres-core:
+        image: postgres:17-alpine
+        container_name: dannest-postgres-core
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: dannest
+            POSTGRES_PASSWORD: dannest
+            POSTGRES_DB: dannest
+        ports:
+            - "5440:5432"
+        volumes:
+            - dannest_core_data:/var/lib/postgresql/data
+
+    postgres-notification:
+        image: postgres:17-alpine
+        container_name: dannest-postgres-notification
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: dannest
+            POSTGRES_PASSWORD: dannest
+            POSTGRES_DB: dannest_notification
+        ports:
+            - "5441:5432"
+        volumes:
+            - dannest_notification_data:/var/lib/postgresql/data
+
+    # Management image includes a web UI at :15672 (guest/guest) — handy for
+    # inspecting the dannest.events exchange/queue/bindings while learning.
+    rabbitmq:
+        image: rabbitmq:4-management-alpine
+        container_name: dannest-rabbitmq
+        restart: unless-stopped
+        ports:
+            - "5672:5672" # AMQP
+            - "15672:15672" # management UI
+
+volumes:
+    dannest_core_data:
+    dannest_notification_data:

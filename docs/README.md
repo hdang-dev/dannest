@@ -13,9 +13,9 @@ scratch for someone new to backend/DevOps.
 DanNest is a small social/collection website with three parts:
 
 ```
-web/       the frontend   (Next.js / React / TypeScript)     → runs on Render
-service/   the backend    (Spring Boot / Java)               → runs on Render
-database   Postgres                                          → runs on Neon
+web/            the frontend   (Next.js / React / TypeScript)     → runs on Render
+services/core/  the backend    (Spring Boot / Java)               → runs on Render
+database        Postgres                                          → runs on Neon
 ```
 
 When you push code to GitHub, a robot (GitHub Actions) checks it and — if it's

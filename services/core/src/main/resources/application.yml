@@ -28,6 +28,21 @@ spring:
     flyway:
         enabled: true
 
+    # --- RabbitMQ ---
+    # Publishes domain events (new post, comment reply, ...) for other services —
+    # today, just the notification service — to consume independently.
+    rabbitmq:
+        host: ${RABBITMQ_HOST:localhost}
+        port: ${RABBITMQ_PORT:5672}
+        username: ${RABBITMQ_USERNAME:guest}
+        password: ${RABBITMQ_PASSWORD:guest}
+        virtual-host: ${RABBITMQ_VHOST:/}
+        ssl:
+            enabled: ${RABBITMQ_SSL_ENABLED:false} # hosted brokers (amqps://) set this true
+        # Default is 60s: with no broker reachable, that's how long a post/comment
+        # request would hang before EventPublisher's catch kicks in. Fail fast instead.
+        connection-timeout: 3000
+
     # --- File uploads (media) ---
     # Cap upload size; the frontend sends already-cropped WebP images.
     servlet:

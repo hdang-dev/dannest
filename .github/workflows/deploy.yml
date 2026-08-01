@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
-      service: ${{ steps.filter.outputs.service }}
+      core: ${{ steps.filter.outputs.core }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -20,8 +20,8 @@ jobs:
           filters: |
             web:
               - 'web/**'
-            service:
-              - 'service/**'
+            core:
+              - 'services/core/**'
 
   # ---- WEB: check, then deploy — only if web/ changed ----
   check-web:
@@ -53,10 +53,10 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             "https://api.render.com/v1/services/srv-d955uk3tqb8s73eer9bg/deploys"
 
-  # ---- SERVICE: check, then deploy — only if service/ changed ----
-  check-service:
+  # ---- CORE: check, then deploy — only if services/core/ changed ----
+  check-core:
     needs: changes
-    if: ${{ needs.changes.outputs.service == 'true' }}
+    if: ${{ needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -74,7 +74,7 @@ jobs:
           --health-retries 5
     defaults:
       run:
-        working-directory: service
+        working-directory: services/core
     env:
       DB_URL: jdbc:postgresql://localhost:5432/dannest
       DB_USER: dannest
@@ -89,9 +89,9 @@ jobs:
       - run: chmod +x gradlew
       - run: ./gradlew build --no-daemon
 
-  deploy-service:
-    needs: [changes, check-service]
-    if: ${{ needs.changes.outputs.service == 'true' }}
+  deploy-core:
+    needs: [changes, check-core]
+    if: ${{ needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy — backend

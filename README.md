@@ -10,12 +10,16 @@ Monorepo containing a **Next.js** web app and a **Spring Boot** API, backed by *
 
 | Layer     | Technology                        | Location   | Port |
 | --------- | --------------------------------- | ---------- | ---- |
-| Frontend  | Next.js 16 (React 19, TypeScript) | `web/`     | 3000 |
-| Backend   | Spring Boot 3.5 (Java 21, Gradle) | `service/` | 8090 |
-| Database  | PostgreSQL 17 (via Docker)        | `service/` | 5440 |
+| Frontend  | Next.js 16 (React 19, TypeScript) | `web/`             | 3000 |
+| Backend   | Spring Boot 3.5 (Java 21, Gradle) | `services/core/`   | 8090 |
+| Database  | PostgreSQL 17 (via Docker)        | `services/core/`   | 5440 |
 
 Frontend and backend are **independent apps** in one repo, each with its own
-toolchain (npm for `web/`, Gradle for `service/`). They talk over HTTP/JSON.
+toolchain (npm for `web/`, Gradle for `services/core/`). They talk over HTTP/JSON.
+
+DanNest is moving toward a microservices split — `services/` will hold each
+backend service (`core`, and later `notification`, `media`) as an independently
+deployable Spring Boot app.
 
 ## Repository structure
 
@@ -23,13 +27,14 @@ toolchain (npm for `web/`, Gradle for `service/`). They talk over HTTP/JSON.
 .
 ├── web/                        # Next.js frontend (npm)
 │   └── src/app/                # App Router pages
-├── service/                    # Spring Boot backend (Gradle)
-│   ├── src/main/java/          # Java source
-│   ├── src/main/resources/
-│   │   ├── application.yml      # app + DB config
-│   │   └── db/migration/        # Flyway SQL migrations
-│   ├── Dockerfile              # how the backend is built for deploy
-│   └── docker-compose.yml       # local Postgres
+├── services/
+│   ├── core/                   # Spring Boot backend — auth/user/collection/post/comment (Gradle)
+│   │   ├── src/main/java/          # Java source
+│   │   └── src/main/resources/
+│   │       ├── application.yml      # app + DB config
+│   │       └── db/migration/        # Flyway SQL migrations
+│   └── notification/           # Spring Boot backend — RabbitMQ consumer + realtime push (Gradle)
+├── docker-compose.yml          # local Postgres (x2) + RabbitMQ, shared by all services
 ├── infra/                      # Terraform (Infrastructure as Code) for Render
 ├── .github/workflows/          # CI/CD pipeline (deploy.yml)
 ├── docs/                       # learning notes (monorepo, CI/CD)
@@ -50,20 +55,20 @@ Clone, then start the three pieces. Order matters: **database first**, then back
 ### 1. Start the database (Postgres in Docker)
 
 ```bash
-docker compose -f service/docker-compose.yml up -d
-docker ps        # confirm "dannest-postgres" is Up on 5440
+docker compose up -d
+docker ps        # confirm the postgres-core, postgres-notification, kafka containers are Up
 ```
 
 Stop it later with:
 
 ```bash
-docker compose -f service/docker-compose.yml down
+docker compose down
 ```
 
 ### 2. Run the backend (Spring Boot)
 
 ```bash
-cd service
+cd services/core
 ./gradlew bootRun
 ```
 
@@ -103,7 +108,7 @@ so **no setup is needed for local dev**. Override when needed:
 ## Database migrations
 
 Schema is managed by **Flyway**. Add versioned SQL files to
-`service/src/main/resources/db/migration/` named `V1__description.sql`,
+`services/core/src/main/resources/db/migration/` named `V1__description.sql`,
 `V2__...`, etc. They run automatically on backend startup.
 
 ## Deployment (CI/CD + IaC)

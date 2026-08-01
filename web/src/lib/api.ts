@@ -26,11 +26,22 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
   onUnauthorized = handler;
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Lets other transports (e.g. the notification WebSocket, which can't go through
+// apiFetch) end the session the same way an HTTP 401 does, instead of each
+// reacting to an expired/invalid token in its own inconsistent way.
+export function triggerUnauthorized(): void {
+  onUnauthorized?.();
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+  baseUrl: string = API_URL,
+): Promise<T> {
   const token = getToken();
   const isFormData = init.body instanceof FormData;
 
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       // Let the browser set the multipart boundary for FormData; otherwise JSON.

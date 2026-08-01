@@ -8,12 +8,15 @@ import {
   markNotificationRead,
   type Notification,
 } from "@/lib/notifications";
+import { useNotificationSocket } from "@/lib/realtime";
 import { formatRelativeTime } from "@/lib/time";
+import { useAuth } from "@/lib/auth";
 
 const POLL_INTERVAL_MS = 20_000;
 
 export default function NotificationBell() {
   const router = useRouter();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -34,6 +37,12 @@ export default function NotificationBell() {
       clearInterval(interval);
     };
   }, []);
+
+  // Realtime push on top of the poll above: a live socket delivers new
+  // notifications instantly, while polling stays as a fallback if it drops.
+  useNotificationSocket(user?.id ?? null, (n) => {
+    setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev]));
+  });
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
