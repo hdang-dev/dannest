@@ -1,19 +1,20 @@
-// The JWT is kept in localStorage. This module is the single place that reads/writes
-// it, so both the auth context and the API layer share one source of truth.
+// The access token is kept in memory only (never localStorage/sessionStorage), so
+// it's unreachable by an XSS payload reading browser storage. The tradeoff: it's
+// gone on every page reload — that's expected, and is why the auth context calls
+// POST /auth/refresh on load to silently get a new one from the refresh cookie.
+// This module is the single place that reads/writes it, so both the auth context
+// and the API layer share one source of truth.
 
-const TOKEN_KEY = "dannest_token";
+let accessToken: string | null = null;
 
 export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setToken(token: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(TOKEN_KEY, token);
+  accessToken = token;
 }
 
 export function clearToken(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(TOKEN_KEY);
+  accessToken = null;
 }

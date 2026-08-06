@@ -3,7 +3,7 @@
 A small social media / collection website — built as a learning project.
 
 Monorepo containing a **Next.js** web app and two **Spring Boot** microservices,
-backed by **PostgreSQL** (one database per service) and **RabbitMQ**.
+backed by **PostgreSQL** (one database per service), **RabbitMQ**, and **Redis**.
 
 ---
 
@@ -17,6 +17,7 @@ backed by **PostgreSQL** (one database per service) and **RabbitMQ**.
 | Database — Core       | PostgreSQL 17 (via Docker)        | `services/core/`           | 5440  |
 | Database — Notification | PostgreSQL 17 (via Docker)      | `services/notification/`   | 5441  |
 | Message broker        | RabbitMQ 4 (via Docker)           | shared, root `docker-compose.yml` | 5672 (AMQP), 15672 (UI) |
+| Cache/session store    | Redis 7 (via Docker)              | shared, root `docker-compose.yml` | 6379  |
 
 Every app/service is **independent** — its own toolchain (npm for `web/`,
 Gradle for each backend), own deploy, own database. Core and Notification
@@ -53,18 +54,18 @@ uploads, following the same pattern.
 
 - **Node.js** ≥ 22 and npm ≥ 10
 - **Java** 21 (JDK)
-- **Docker** Desktop (for Postgres ×2 + RabbitMQ)
+- **Docker** Desktop (for Postgres ×2 + RabbitMQ + Redis)
 - (optional) VSCode with *Extension Pack for Java* + *Spring Boot Extension Pack*
 
 ## Getting started
 
 Clone, then start the pieces in order: **infra first**, then both backends, then the frontend.
 
-### 1. Start infra (Postgres ×2 + RabbitMQ, in Docker)
+### 1. Start infra (Postgres ×2 + RabbitMQ + Redis, in Docker)
 
 ```bash
 docker compose up -d
-docker ps        # confirm postgres-core, postgres-notification, rabbitmq are Up
+docker ps        # confirm postgres-core, postgres-notification, rabbitmq, redis are Up
 ```
 
 RabbitMQ's management UI is at http://localhost:15672 (guest/guest) — handy
@@ -124,6 +125,11 @@ so **no setup is needed for local dev**. Override when needed:
 | `DB_USER` / `DB_PASSWORD`| `dannest` / `dannest`                                   | both backends        |
 | `SERVER_PORT`            | `8090` (Core) / `8091` (Notification)                   | both backends        |
 | `JWT_SECRET`             | insecure dev default (shared by both — same secret HS256-signs and verifies) | both backends |
+| `JWT_ACCESS_EXPIRATION_SECONDS` | `900` (15 min)                                    | Core                 |
+| `JWT_REFRESH_EXPIRATION_SECONDS`| `2592000` (30 days) — tracked in Redis, revocable  | Core                 |
+| `JWT_REFRESH_COOKIE_SECURE` / `JWT_REFRESH_COOKIE_SAME_SITE` | `false` / `Lax` (local) — `true` / `None` in production (web + Core are cross-site there) | Core |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / _(none)_ — backs refresh tokens only | Core |
+| `REDIS_SSL_ENABLED`      | `false` (local) — `true` in production (Upstash)         | Core                 |
 | `RABBITMQ_HOST`          | `localhost`                                             | both backends        |
 | `RABBITMQ_PORT`          | `5672` (local) — hosted brokers use `5671` + TLS         | both backends        |
 | `RABBITMQ_SSL_ENABLED`   | `false` (local) — `true` in production                  | both backends        |
@@ -144,8 +150,8 @@ service's startup. The two services **never share a schema** — see
 ## Deployment (CI/CD + IaC)
 
 Production runs on **Render** — three services (web, Core, Notification) —
-with two **Neon** Postgres databases (one per backend) and a **CloudAMQP**
-RabbitMQ instance.
+with two **Neon** Postgres databases (one per backend), a **CloudAMQP**
+RabbitMQ instance, and an **Upstash** Redis instance (Core only).
 
 - **Infrastructure as Code** — the Render services are defined in `infra/*.tf`
   (Terraform). Run `terraform apply` from `infra/` to create new ones.
@@ -173,6 +179,7 @@ This is a learning project — the `docs/` folder explains it from scratch:
 - [Lesson 2 — CI/CD](docs/lesson-2-cicd.md)
 - [Lesson 3 — Google Auth](docs/lesson-3-google-auth.md)
 - [Lesson 4 — Monolith → Microservices](docs/lesson-4-microservices.md)
+- [Lesson 5 — Redis & refresh tokens](docs/lesson-5-redis-refresh-tokens.md)
 
 ## Roadmap
 
@@ -185,6 +192,8 @@ This is a learning project — the `docs/` folder explains it from scratch:
 - [x] Notifications, extracted into their own microservice (RabbitMQ events,
       own database, own Render deploy)
 - [x] Realtime notifications over WebSocket/STOMP, with polling fallback
+- [x] Redis-backed refresh tokens (short-lived JWT access token + revocable,
+      rotating refresh token in an httpOnly cookie)
 - [ ] Media service (file uploads), following the same service-boundary pattern
-- [ ] Redis (caching, and pub/sub for realtime once Notification runs on
-      more than one instance)
+- [ ] Redis caching (feeds), and pub/sub for realtime once Notification runs
+      on more than one instance

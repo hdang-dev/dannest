@@ -1,10 +1,11 @@
 // Central API client. Every authenticated request goes through apiFetch, which
-// attaches the bearer token and — crucially — reacts to a 401 in ONE place: it
-// ends the session so an expired/invalid token can never leave the app stuck
-// silently failing every call.
+// attaches the bearer token and — crucially — reacts to a 401 in ONE place: first
+// it tries a silent refresh (the refresh token lives in an httpOnly cookie, sent
+// automatically via credentials: "include"); only if that also fails does it end
+// the session, so a plain access-token expiry never kicks the user out.
 
 import { API_URL } from "./config";
-import { getToken } from "./token";
+import { getToken, setToken } from "./token";
 
 /** Thrown when the API responds with a non-2xx status. */
 export class ApiError extends Error {
@@ -33,16 +34,37 @@ export function triggerUnauthorized(): void {
   onUnauthorized?.();
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init: RequestInit = {},
-  baseUrl: string = API_URL,
-): Promise<T> {
-  const token = getToken();
-  const isFormData = init.body instanceof FormData;
+// If several requests 401 at once (e.g. a batch of calls on page load), only one
+// should trigger POST /auth/refresh — the rest wait on this same in-flight call.
+let refreshPromise: Promise<string | null> | null = null;
 
-  const res = await fetch(`${baseUrl}${path}`, {
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<{ accessToken: string }>) : null))
+      .then((data) => {
+        if (!data) return null;
+        setToken(data.accessToken);
+        return data.accessToken;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function doFetch(path: string, init: RequestInit, baseUrl: string, token: string | null): Promise<Response> {
+  const isFormData = init.body instanceof FormData;
+  return fetch(`${baseUrl}${path}`, {
     ...init,
+    // Only /auth/refresh and /auth/logout actually read a cookie (it's scoped to
+    // /api/v1/auth), so this is a no-op for every other request.
+    credentials: "include",
     headers: {
       // Let the browser set the multipart boundary for FormData; otherwise JSON.
       ...(init.body && !isFormData ? { "Content-Type": "application/json" } : {}),
@@ -50,9 +72,24 @@ export async function apiFetch<T>(
       ...init.headers,
     },
   });
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+  baseUrl: string = API_URL,
+): Promise<T> {
+  let res = await doFetch(path, init, baseUrl, getToken());
 
   if (res.status === 401) {
-    // Token missing / expired / signed by another backend → end the session.
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      res = await doFetch(path, init, baseUrl, refreshedToken);
+    }
+  }
+
+  if (res.status === 401) {
+    // Refresh token missing/expired too — the session is really over.
     onUnauthorized?.();
     throw new ApiError(401, "Session expired — please sign in again");
   }

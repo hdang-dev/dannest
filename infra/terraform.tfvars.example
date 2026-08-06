@@ -31,3 +31,10 @@ rabbitmq_host      = "your-instance.rmq.cloudamqp.com"
 rabbitmq_username  = "your-vhost-name"
 rabbitmq_password  = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 rabbitmq_vhost     = "your-vhost-name"
+
+# ---- Redis (Upstash free tier) ----
+# From the Upstash console's database details panel ("Endpoint" and "Password").
+# Backs Core's refresh tokens only — no caching yet.
+redis_host     = "your-instance.upstash.io"
+redis_port     = "6379"
+redis_password = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

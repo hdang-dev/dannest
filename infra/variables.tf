@@ -115,3 +115,22 @@ variable "rabbitmq_vhost" {
   description = "RabbitMQ virtual host (CloudAMQP: same value as the username on the free plan)"
   type        = string
 }
+
+# ---- Redis (Upstash) — backs Core's refresh tokens only, no caching yet ----
+
+variable "redis_host" {
+  description = "Redis hostname (Upstash: the Endpoint from the database's dashboard)"
+  type        = string
+}
+
+variable "redis_port" {
+  description = "Redis port (Upstash TLS port)"
+  type        = string
+  default     = "6379"
+}
+
+variable "redis_password" {
+  description = "Redis password (Upstash: the database's Password)"
+  type        = string
+  sensitive   = true
+}

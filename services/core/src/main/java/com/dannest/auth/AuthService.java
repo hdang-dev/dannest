@@ -1,7 +1,5 @@
 package com.dannest.auth;
 
-import com.dannest.auth.dto.AuthResponse;
-import com.dannest.auth.dto.UserResponse;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
@@ -14,17 +12,17 @@ public class AuthService {
     private static final String PROVIDER = "GOOGLE";
 
     private final GoogleTokenVerifier googleVerifier;
-    private final JwtService jwtService;
     private final UserRepository userRepository;
 
-    public AuthService(GoogleTokenVerifier googleVerifier, JwtService jwtService, UserRepository userRepository) {
+    public AuthService(GoogleTokenVerifier googleVerifier, UserRepository userRepository) {
         this.googleVerifier = googleVerifier;
-        this.jwtService = jwtService;
         this.userRepository = userRepository;
     }
 
+    /** Verifies the Google ID token and finds or creates the matching user. Minting our
+     * own tokens is the caller's job (see AuthController) — this is Google-specific. */
     @Transactional
-    public AuthResponse loginWithGoogle(String idToken) {
+    public User loginWithGoogle(String idToken) {
         GoogleIdToken.Payload payload = googleVerifier.verify(idToken);
 
         if (!Boolean.TRUE.equals(payload.getEmailVerified())) {
@@ -38,15 +36,12 @@ public class AuthService {
             throw new InvalidTokenException("Google account has no email");
         }
 
-        User user = userRepository.findByProviderAndProviderId(PROVIDER, sub)
+        return userRepository.findByProviderAndProviderId(PROVIDER, sub)
                 .map(existing -> {
                     existing.setAvatarUrl(picture);
                     return existing;
                 })
                 .orElseGet(() -> createUser(email, name, sub, picture));
-
-        String token = jwtService.createToken(user);
-        return new AuthResponse(token, UserResponse.from(user));
     }
 
     private User createUser(String email, String name, String sub, String picture) {

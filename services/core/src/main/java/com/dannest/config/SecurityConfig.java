@@ -38,7 +38,10 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/google").permitAll()
+                        // /refresh and /logout run on the refresh cookie, not the access
+                        // token — they must work even when the access token has expired.
+                        .requestMatchers("/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout")
+                        .permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));

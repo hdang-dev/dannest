@@ -44,6 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const logout = useCallback(() => {
+    // Best-effort: revoke the refresh token server-side (Redis) so it can't be
+    // used again, but the client-side session ends either way.
+    fetch(`${API_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
     clearToken();
     setUser(null);
     window.google?.accounts?.id?.disableAutoSelect?.();
@@ -66,28 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [router]);
 
-  // Restore the session from a stored token on first load.
+  // The access token lives in memory only, so it's gone on every reload — restore
+  // the session by exchanging the httpOnly refresh cookie for a new one instead.
   useEffect(() => {
     let cancelled = false;
-    const token = getToken();
 
-    const request: Promise<AuthUser | null> = token
-      ? fetch(`${API_URL}/api/v1/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((res) => {
-            if (res.ok) return res.json() as Promise<AuthUser>;
-            clearToken(); // stale token — drop it; RequireAuth will route to login
-            return null;
-          })
-          .catch(() => null)
-      : Promise.resolve(null);
-
-    request.then((restored) => {
-      if (cancelled) return;
-      if (restored) setUser(restored);
-      setLoading(false);
-    });
+    fetch(`${API_URL}/api/v1/auth/refresh`, { method: "POST", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { accessToken: string; user: AuthUser } | null) => {
+        if (cancelled) return null;
+        if (data) {
+          setToken(data.accessToken);
+          setUser(data.user);
+        }
+        return data;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginWithGoogle = useCallback(async (idToken: string) => {
     const res = await fetch(`${API_URL}/api/v1/auth/google`, {
       method: "POST",
+      credentials: "include", // receive the refresh-token cookie
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken }),
     });

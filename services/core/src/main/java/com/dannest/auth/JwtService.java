@@ -10,19 +10,23 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
-/** Issues our own signed JWT (HS256) for a logged-in user. */
+/**
+ * Issues our own signed access token (HS256, short-lived) for a logged-in user.
+ * The refresh token is a separate, opaque value — see {@link RefreshTokenService}.
+ */
 @Service
 public class JwtService {
 
     private final JwtEncoder encoder;
     private final long expirySeconds;
 
-    public JwtService(JwtEncoder encoder, @Value("${jwt.expiration-seconds}") long expirySeconds) {
+    public JwtService(
+            JwtEncoder encoder, @Value("${jwt.access-token-expiration-seconds}") long expirySeconds) {
         this.encoder = encoder;
         this.expirySeconds = expirySeconds;
     }
 
-    public String createToken(User user) {
+    public String createAccessToken(User user) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("dannest")

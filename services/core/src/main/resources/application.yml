@@ -50,6 +50,17 @@ spring:
             max-file-size: ${MEDIA_MAX_FILE_SIZE:5MB}
             max-request-size: ${MEDIA_MAX_FILE_SIZE:5MB}
 
+    # --- Redis ---
+    # Backs refresh tokens only (see jwt.refresh-token-expiration-seconds below).
+    # No caching uses Redis yet.
+    data:
+        redis:
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD:}
+            ssl:
+                enabled: ${REDIS_SSL_ENABLED:false} # hosted Redis (Upstash etc.) sets this true
+
 # --- Actuator (health/monitoring) ---
 # Expose only what we need; never expose everything publicly.
 management:
@@ -73,9 +84,22 @@ google:
 
 # Our app JWT (HS256). The dev default is INSECURE and for local only —
 # production MUST set JWT_SECRET to a long random value (>= 32 bytes).
+#
+# Two tokens: a short-lived access token (stateless, checked by signature only)
+# and a long-lived refresh token (an opaque random string, tracked in Redis so
+# it can actually be revoked on logout — see RefreshTokenService).
 jwt:
     secret: ${JWT_SECRET:dev-only-insecure-jwt-secret-change-me-please-0123456789abcdef}
-    expiration-seconds: ${JWT_EXPIRATION_SECONDS:604800} # 7 days
+    access-token-expiration-seconds: ${JWT_ACCESS_EXPIRATION_SECONDS:900} # 15 min
+    refresh-token-expiration-seconds: ${JWT_REFRESH_EXPIRATION_SECONDS:2592000} # 30 days
+    # Refresh token is set as an httpOnly cookie — never readable by JS. In prod the
+    # frontend is on a different origin (Vercel vs Render), so it needs SameSite=None
+    # + Secure; local dev is http on the same-site localhost, so it needs SameSite=Lax
+    # (SameSite=None is rejected by browsers without Secure/HTTPS).
+    refresh-cookie:
+        name: dannest_refresh_token
+        secure: ${JWT_REFRESH_COOKIE_SECURE:false}
+        same-site: ${JWT_REFRESH_COOKIE_SAME_SITE:Lax}
 
 # Which frontend origins may call the API (comma-separated).
 app:

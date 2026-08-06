@@ -51,6 +51,17 @@ resource "render_web_service" "backend" {
     JWT_SECRET           = { value = var.jwt_secret }
     CORS_ALLOWED_ORIGINS = { value = local.web_url }
 
+    # Refresh-token cookie: web and backend are on different Render subdomains, which
+    # browsers treat as cross-site — needs SameSite=None (and thus Secure) to be sent.
+    JWT_REFRESH_COOKIE_SECURE    = { value = "true" }
+    JWT_REFRESH_COOKIE_SAME_SITE = { value = "None" }
+
+    # Redis (Upstash) — backs refresh tokens only, no caching yet.
+    REDIS_HOST        = { value = var.redis_host }
+    REDIS_PORT        = { value = var.redis_port }
+    REDIS_PASSWORD    = { value = var.redis_password }
+    REDIS_SSL_ENABLED = { value = "true" }
+
     # Object storage (Cloudflare R2) — media uploads.
     R2_ACCOUNT_ID      = { value = var.r2_account_id }
     R2_ACCESS_KEY      = { value = var.r2_access_key }

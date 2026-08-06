@@ -40,6 +40,16 @@ services:
             - "5672:5672" # AMQP
             - "15672:15672" # management UI
 
+    # Backs Core's refresh tokens only (see services/core/.../auth/RefreshTokenService).
+    # No persistence volume — losing local dev data here just means everyone has to
+    # log in again, which is fine.
+    redis:
+        image: redis:7-alpine
+        container_name: dannest-redis
+        restart: unless-stopped
+        ports:
+            - "6379:6379"
+
 volumes:
     dannest_core_data:
     dannest_notification_data:
