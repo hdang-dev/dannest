@@ -11,6 +11,9 @@ scratch for someone new to backend/DevOps.
 4. [Monolith → Microservices](./lesson-4-microservices.md) — splitting the
    backend into two services talking over RabbitMQ, and the real deploy
    problems that caused.
+5. [Redis & refresh tokens](./lesson-5-redis-refresh-tokens.md) — why a
+   plain JWT can't be revoked, and the short-access-token +
+   Redis-backed-refresh-token flow that fixes it.
 
 ## The 60-second overview
 
