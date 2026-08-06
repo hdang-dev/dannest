@@ -34,21 +34,27 @@ export function triggerUnauthorized(): void {
   onUnauthorized?.();
 }
 
-// If several requests 401 at once (e.g. a batch of calls on page load), only one
-// should trigger POST /auth/refresh — the rest wait on this same in-flight call.
-let refreshPromise: Promise<string | null> | null = null;
+export type RefreshedSession = { accessToken: string; user: Record<string, unknown> };
 
-function refreshAccessToken(): Promise<string | null> {
+// The refresh token is single-use (the backend rotates it on every call), so two
+// concurrent /auth/refresh calls are actively harmful: whichever loses the race
+// finds the token already consumed and fails, ending a session the OTHER call
+// just successfully restored. Every caller — the auth context's initial-load
+// restore, and apiFetch's 401 retry below — MUST go through this one function,
+// so at most one real request is ever in flight at a time.
+let refreshPromise: Promise<RefreshedSession | null> | null = null;
+
+export function refreshSession(): Promise<RefreshedSession | null> {
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_URL}/api/v1/auth/refresh`, {
       method: "POST",
       credentials: "include",
     })
-      .then((res) => (res.ok ? (res.json() as Promise<{ accessToken: string }>) : null))
+      .then((res) => (res.ok ? (res.json() as Promise<RefreshedSession>) : null))
       .then((data) => {
         if (!data) return null;
         setToken(data.accessToken);
-        return data.accessToken;
+        return data;
       })
       .catch(() => null)
       .finally(() => {
@@ -82,9 +88,9 @@ export async function apiFetch<T>(
   let res = await doFetch(path, init, baseUrl, getToken());
 
   if (res.status === 401) {
-    const refreshedToken = await refreshAccessToken();
-    if (refreshedToken) {
-      res = await doFetch(path, init, baseUrl, refreshedToken);
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      res = await doFetch(path, init, baseUrl, refreshed.accessToken);
     }
   }
 

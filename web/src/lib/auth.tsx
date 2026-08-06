@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL } from "./config";
-import { setUnauthorizedHandler } from "./api";
+import { refreshSession, setUnauthorizedHandler } from "./api";
 import { clearToken, getToken, setToken } from "./token";
 import type { Crop } from "./media";
 
@@ -71,23 +71,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // The access token lives in memory only, so it's gone on every reload — restore
   // the session by exchanging the httpOnly refresh cookie for a new one instead.
+  // This MUST go through the shared refreshSession() (not its own fetch): the
+  // refresh token is single-use, so a second, uncoordinated caller racing this
+  // one would consume it first and log the user right back out.
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${API_URL}/api/v1/auth/refresh`, { method: "POST", credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { accessToken: string; user: AuthUser } | null) => {
-        if (cancelled) return null;
-        if (data) {
-          setToken(data.accessToken);
-          setUser(data.user);
-        }
-        return data;
-      })
-      .catch(() => null)
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    refreshSession().then((data) => {
+      if (cancelled) return;
+      if (data) setUser(data.user as AuthUser);
+      setLoading(false);
+    });
 
     return () => {
       cancelled = true;
