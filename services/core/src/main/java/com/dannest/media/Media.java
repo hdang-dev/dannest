@@ -11,6 +11,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * A generic image asset. It is either an {@code UPLOAD} (bytes in Cloudflare R2) or an
@@ -19,6 +21,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "media")
+@Getter
 public class Media extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -46,6 +49,7 @@ public class Media extends BaseEntity {
     private Integer height;
 
     @Embedded
+    @Setter
     private ImageCrop crop = ImageCrop.full();
 
     protected Media() {
@@ -70,45 +74,5 @@ public class Media extends BaseEntity {
         media.source = MediaSource.EXTERNAL;
         media.url = url;
         return media;
-    }
-
-    public User getOwner() {
-        return owner;
-    }
-
-    public MediaSource getSource() {
-        return source;
-    }
-
-    public String getStorageKey() {
-        return storageKey;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public String getMimeType() {
-        return mimeType;
-    }
-
-    public Long getSize() {
-        return size;
-    }
-
-    public Integer getWidth() {
-        return width;
-    }
-
-    public Integer getHeight() {
-        return height;
-    }
-
-    public ImageCrop getCrop() {
-        return crop;
-    }
-
-    public void setCrop(ImageCrop crop) {
-        this.crop = crop;
     }
 }

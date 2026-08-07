@@ -6,6 +6,7 @@ import com.dannest.common.ResourceNotFoundException;
 import com.dannest.event.DannestEvent;
 import com.dannest.notification.dto.NotificationResponse;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,16 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final SimpMessagingTemplate messagingTemplate;
-
-    public NotificationService(
-            NotificationRepository notificationRepository, SimpMessagingTemplate messagingTemplate) {
-        this.notificationRepository = notificationRepository;
-        this.messagingTemplate = messagingTemplate;
-    }
 
     @Transactional(readOnly = true)
     public PagedResponse<NotificationResponse> list(UUID userId, Pageable pageable) {

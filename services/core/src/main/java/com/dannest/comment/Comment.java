@@ -9,9 +9,12 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "comments")
+@Getter
 public class Comment extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -28,6 +31,7 @@ public class Comment extends BaseEntity {
     private Comment parent;
 
     @Column(nullable = false, columnDefinition = "text")
+    @Setter
     private String content;
 
     protected Comment() {
@@ -37,26 +41,6 @@ public class Comment extends BaseEntity {
         this.post = post;
         this.author = author;
         this.parent = parent;
-        this.content = content;
-    }
-
-    public Post getPost() {
-        return post;
-    }
-
-    public User getAuthor() {
-        return author;
-    }
-
-    public Comment getParent() {
-        return parent;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public void setContent(String content) {
         this.content = content;
     }
 }

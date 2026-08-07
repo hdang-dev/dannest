@@ -1,8 +1,7 @@
 package com.dannest.media;
 
 import java.net.URI;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,11 +11,10 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 /** Builds the S3 client that talks to Cloudflare R2. */
+@Slf4j
 @Configuration
 @EnableConfigurationProperties(R2Properties.class)
 public class R2Config {
-
-    private static final Logger log = LoggerFactory.getLogger(R2Config.class);
 
     // Placeholder used when R2 isn't configured, so the app can still boot for
     // non-upload work. The AWS SDK refuses to build a client with blank credentials.

@@ -12,9 +12,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "collections")
+@Getter
 public class Collection extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -22,18 +25,22 @@ public class Collection extends BaseEntity {
     private User owner;
 
     @Column(nullable = false, length = 120)
+    @Setter
     private String name;
 
     @Column(columnDefinition = "text")
+    @Setter
     private String description;
 
     /** The cover image — a media asset (uploaded or external); carries its own crop. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cover_media_id")
+    @Setter
     private Media cover;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
+    @Setter
     private Visibility visibility = Visibility.PUBLIC;
 
     /** Non-null once archived (soft-deleted); archived collections are hidden from listings. */
@@ -47,46 +54,6 @@ public class Collection extends BaseEntity {
         this.owner = owner;
         this.name = name;
         this.visibility = visibility;
-    }
-
-    public User getOwner() {
-        return owner;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public Media getCover() {
-        return cover;
-    }
-
-    public void setCover(Media cover) {
-        this.cover = cover;
-    }
-
-    public Visibility getVisibility() {
-        return visibility;
-    }
-
-    public void setVisibility(Visibility visibility) {
-        this.visibility = visibility;
-    }
-
-    public Instant getArchivedAt() {
-        return archivedAt;
     }
 
     public boolean isArchived() {

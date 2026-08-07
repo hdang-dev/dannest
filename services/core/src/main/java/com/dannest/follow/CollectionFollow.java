@@ -9,6 +9,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
 
 /** A user following a collection, to be notified when it gets a new post. Unique (follower, collection). */
 @Entity
@@ -16,6 +17,7 @@ import jakarta.persistence.UniqueConstraint;
     name = "collection_follows",
     uniqueConstraints = @UniqueConstraint(name = "uq_collection_follow", columnNames = {"follower_id", "collection_id"})
 )
+@Getter
 public class CollectionFollow extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -32,13 +34,5 @@ public class CollectionFollow extends BaseEntity {
     public CollectionFollow(User follower, Collection collection) {
         this.follower = follower;
         this.collection = collection;
-    }
-
-    public User getFollower() {
-        return follower;
-    }
-
-    public Collection getCollection() {
-        return collection;
     }
 }

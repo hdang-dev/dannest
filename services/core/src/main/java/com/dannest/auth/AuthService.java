@@ -3,21 +3,18 @@ package com.dannest.auth;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class AuthService {
 
     private static final String PROVIDER = "GOOGLE";
 
     private final GoogleTokenVerifier googleVerifier;
     private final UserRepository userRepository;
-
-    public AuthService(GoogleTokenVerifier googleVerifier, UserRepository userRepository) {
-        this.googleVerifier = googleVerifier;
-        this.userRepository = userRepository;
-    }
 
     /** Verifies the Google ID token and finds or creates the matching user. Minting our
      * own tokens is the caller's job (see AuthController) — this is Google-specific. */

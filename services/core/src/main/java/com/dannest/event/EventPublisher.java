@@ -1,8 +1,8 @@
 package com.dannest.event;
 
 import com.dannest.config.RabbitConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
@@ -15,16 +15,12 @@ import org.springframework.stereotype.Component;
  * would roll back the caller's transaction, so we catch and log instead of letting it
  * propagate.
  */
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class EventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(EventPublisher.class);
-
     private final RabbitTemplate rabbitTemplate;
-
-    public EventPublisher(RabbitTemplate rabbitTemplate) {
-        this.rabbitTemplate = rabbitTemplate;
-    }
 
     /** Routing key is the event type, so a future consumer can bind to only what it needs. */
     public void publish(DannestEvent event) {

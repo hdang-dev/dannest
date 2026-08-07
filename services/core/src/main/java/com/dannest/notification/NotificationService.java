@@ -9,6 +9,7 @@ import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,18 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class NotificationService {
 
     private final UserRepository userRepository;
     private final CollectionRepository collectionRepository;
     private final EventPublisher eventPublisher;
-
-    public NotificationService(
-            UserRepository userRepository, CollectionRepository collectionRepository, EventPublisher eventPublisher) {
-        this.userRepository = userRepository;
-        this.collectionRepository = collectionRepository;
-        this.eventPublisher = eventPublisher;
-    }
 
     /** Publish a notification event. No-op if the actor is the recipient. */
     public void notify(

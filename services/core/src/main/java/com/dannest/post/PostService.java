@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -46,6 +47,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class PostService {
 
     private final PostRepository postRepository;
@@ -57,27 +59,6 @@ public class PostService {
     private final UserRepository userRepository;
     private final CollectionFollowRepository collectionFollowRepository;
     private final NotificationService notificationService;
-
-    public PostService(
-            PostRepository postRepository,
-            PostMediaRepository postMediaRepository,
-            PostLikeRepository postLikeRepository,
-            CommentRepository commentRepository,
-            CollectionRepository collectionRepository,
-            MediaRepository mediaRepository,
-            UserRepository userRepository,
-            CollectionFollowRepository collectionFollowRepository,
-            NotificationService notificationService) {
-        this.postRepository = postRepository;
-        this.postMediaRepository = postMediaRepository;
-        this.postLikeRepository = postLikeRepository;
-        this.commentRepository = commentRepository;
-        this.collectionRepository = collectionRepository;
-        this.mediaRepository = mediaRepository;
-        this.userRepository = userRepository;
-        this.collectionFollowRepository = collectionFollowRepository;
-        this.notificationService = notificationService;
-    }
 
     public PostResponse create(UUID userId, CreatePostRequest request) {
         Collection collection = resolveOwnedCollection(userId, request.collectionId());

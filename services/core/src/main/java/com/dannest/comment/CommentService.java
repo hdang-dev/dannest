@@ -18,6 +18,7 @@ import com.dannest.post.PostRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,23 +34,13 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
-
-    public CommentService(
-            CommentRepository commentRepository,
-            PostRepository postRepository,
-            UserRepository userRepository,
-            NotificationService notificationService) {
-        this.commentRepository = commentRepository;
-        this.postRepository = postRepository;
-        this.userRepository = userRepository;
-        this.notificationService = notificationService;
-    }
 
     @Transactional(readOnly = true)
     public PagedResponse<CommentResponse> list(UUID userId, UUID postId, Pageable pageable) {

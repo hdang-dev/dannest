@@ -9,6 +9,7 @@ import com.dannest.user.UserRepository;
 import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +26,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class MediaService {
 
     /** Allowed image types → file extension used in the storage key. */
@@ -37,17 +39,6 @@ public class MediaService {
     private final R2Properties props;
     private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
-
-    public MediaService(
-            S3Client s3,
-            R2Properties props,
-            MediaRepository mediaRepository,
-            UserRepository userRepository) {
-        this.s3 = s3;
-        this.props = props;
-        this.mediaRepository = mediaRepository;
-        this.userRepository = userRepository;
-    }
 
     /** Upload the (original) image bytes to R2 with an optional display crop. */
     public MediaResponse upload(UUID userId, MultipartFile file, ImageCrop crop) {

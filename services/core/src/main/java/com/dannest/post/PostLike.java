@@ -8,6 +8,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
 
 /** A user's like on a post. Unique (post, user) prevents duplicate likes. */
 @Entity
@@ -15,6 +16,7 @@ import jakarta.persistence.UniqueConstraint;
     name = "post_likes",
     uniqueConstraints = @UniqueConstraint(name = "uq_post_like", columnNames = {"post_id", "user_id"})
 )
+@Getter
 public class PostLike extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -31,13 +33,5 @@ public class PostLike extends BaseEntity {
     public PostLike(Post post, User user) {
         this.post = post;
         this.user = user;
-    }
-
-    public Post getPost() {
-        return post;
-    }
-
-    public User getUser() {
-        return user;
     }
 }

@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
 
 /**
  * An event the recipient should be told about. Denormalized on write from the {@code
@@ -15,6 +16,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "notifications")
+@Getter
 public class Notification extends BaseEntity {
 
     @Column(name = "recipient_id", nullable = false)
@@ -70,46 +72,6 @@ public class Notification extends BaseEntity {
         this.collectionName = collectionName;
         this.postId = postId;
         this.commentId = commentId;
-    }
-
-    public UUID getRecipientId() {
-        return recipientId;
-    }
-
-    public UUID getActorId() {
-        return actorId;
-    }
-
-    public String getActorUsername() {
-        return actorUsername;
-    }
-
-    public String getActorAvatarUrl() {
-        return actorAvatarUrl;
-    }
-
-    public NotificationType getType() {
-        return type;
-    }
-
-    public UUID getCollectionId() {
-        return collectionId;
-    }
-
-    public String getCollectionName() {
-        return collectionName;
-    }
-
-    public UUID getPostId() {
-        return postId;
-    }
-
-    public UUID getCommentId() {
-        return commentId;
-    }
-
-    public Instant getReadAt() {
-        return readAt;
     }
 
     public boolean isRead() {

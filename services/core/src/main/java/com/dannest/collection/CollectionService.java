@@ -13,6 +13,7 @@ import com.dannest.user.UserRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -27,20 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class CollectionService {
 
     private final CollectionRepository collectionRepository;
     private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
-
-    public CollectionService(
-            CollectionRepository collectionRepository,
-            MediaRepository mediaRepository,
-            UserRepository userRepository) {
-        this.collectionRepository = collectionRepository;
-        this.mediaRepository = mediaRepository;
-        this.userRepository = userRepository;
-    }
 
     public CollectionResponse create(UUID userId, CreateCollectionRequest request) {
         User owner = userRepository.getReferenceById(userId);

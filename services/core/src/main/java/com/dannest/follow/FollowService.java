@@ -9,6 +9,7 @@ import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.user.UserRepository;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,20 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class FollowService {
 
     private final CollectionFollowRepository followRepository;
     private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
-
-    public FollowService(
-            CollectionFollowRepository followRepository,
-            CollectionRepository collectionRepository,
-            UserRepository userRepository) {
-        this.followRepository = followRepository;
-        this.collectionRepository = collectionRepository;
-        this.userRepository = userRepository;
-    }
 
     /** Follow a collection the caller may view and doesn't own; idempotent. */
     public void follow(UUID userId, UUID collectionId) {

@@ -2,6 +2,7 @@ package com.dannest.media;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
+import lombok.Getter;
 
 /**
  * A display-time crop: the visible rectangle as fractions (0..1) of the image.
@@ -9,6 +10,7 @@ import jakarta.persistence.Embeddable;
  * image ({@code 0,0,1,1}). Reusable wherever an image is placed (cover, avatar, …).
  */
 @Embeddable
+@Getter
 public class ImageCrop {
 
     @Column(name = "crop_x", nullable = false)
@@ -35,21 +37,5 @@ public class ImageCrop {
 
     public static ImageCrop full() {
         return new ImageCrop(0f, 0f, 1f, 1f);
-    }
-
-    public float getX() {
-        return x;
-    }
-
-    public float getY() {
-        return y;
-    }
-
-    public float getWidth() {
-        return width;
-    }
-
-    public float getHeight() {
-        return height;
     }
 }

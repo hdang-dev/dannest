@@ -8,21 +8,18 @@ import com.dannest.media.MediaRepository;
 import com.dannest.user.dto.UpdateUserRequest;
 import com.dannest.user.dto.UserProfileResponse;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Reading a user's profile and updating the caller's own profile (username, bio, avatar). */
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final MediaRepository mediaRepository;
-
-    public UserService(UserRepository userRepository, MediaRepository mediaRepository) {
-        this.userRepository = userRepository;
-        this.mediaRepository = mediaRepository;
-    }
 
     /** A user's profile, as visible to {@code viewerId} (email is owner-only). */
     @Transactional(readOnly = true)
