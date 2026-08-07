@@ -3,7 +3,8 @@
 A small social media / collection website — built as a learning project.
 
 Monorepo containing a **Next.js** web app and two **Spring Boot** microservices,
-backed by **PostgreSQL** (one database per service), **RabbitMQ**, and **Redis**.
+backed by **PostgreSQL** (one database per service), **RabbitMQ**, **Redis**,
+and **Cloudflare R2** (media storage).
 
 ---
 
@@ -23,12 +24,14 @@ Every app/service is **independent** — its own toolchain (npm for `web/`,
 Gradle for each backend), own deploy, own database. Core and Notification
 never query each other's database directly; Core publishes domain events to
 RabbitMQ and Notification consumes them, decoupled and independently
-deployable. See [Lesson 4](docs/lesson-4-microservices.md) for the full story
-of that split, including a real production incident it caused and how it was
-fixed.
+deployable. See [Lesson 4](docs/lessons/lesson-4-microservices.md) for the
+full story of that split, including a real production incident it caused and
+how it was fixed.
 
-`services/media` is a planned future service (not built yet) for file
-uploads, following the same pattern.
+Media uploads (post images, avatars, collection covers) already work today —
+they're a feature inside `services/core` (`com.dannest.media`), backed by
+Cloudflare R2. There's no separate media *service* yet; see
+[Roadmap](#roadmap) for that as a possible future service-boundary exercise.
 
 ## Repository structure
 
@@ -37,16 +40,19 @@ uploads, following the same pattern.
 ├── web/                        # Next.js frontend (npm)
 │   └── src/app/                # App Router pages
 ├── services/
-│   ├── core/                   # Spring Boot backend — auth/user/collection/post/comment (Gradle)
+│   ├── core/                   # Spring Boot backend — auth/user/collection/post/comment/media (Gradle)
 │   │   ├── src/main/java/          # Java source
 │   │   └── src/main/resources/
-│   │       ├── application.yml      # app + DB config
-│   │       └── db/migration/        # Flyway SQL migrations
+│   │       ├── application.yml            # app + DB config
+│   │       ├── application-local.yml.example  # copy to application-local.yml for R2 creds
+│   │       └── db/migration/              # Flyway SQL migrations
 │   └── notification/           # Spring Boot backend — RabbitMQ consumer + realtime push (Gradle)
-├── docker-compose.yml          # local Postgres (x2) + RabbitMQ, shared by all services
+├── docker-compose.yml          # local Postgres (x2) + RabbitMQ + Redis, shared by all services
 ├── infra/                      # Terraform (Infrastructure as Code) for Render
 ├── .github/workflows/          # CI/CD pipeline (deploy.yml)
-├── docs/                       # learning notes (monorepo, CI/CD, auth, microservices)
+├── docs/
+│   ├── lessons/                 # learning notes, in order (monorepo, CI/CD, auth, microservices, redis)
+│   └── tech/                    # technical reference (architecture + flows, DB schema)
 └── README.md
 ```
 
@@ -133,10 +139,33 @@ so **no setup is needed for local dev**. Override when needed:
 | `RABBITMQ_HOST`          | `localhost`                                             | both backends        |
 | `RABBITMQ_PORT`          | `5672` (local) — hosted brokers use `5671` + TLS         | both backends        |
 | `RABBITMQ_SSL_ENABLED`   | `false` (local) — `true` in production                  | both backends        |
+| `GOOGLE_CLIENT_ID`       | a committed dev-only client id (public, safe to commit) — must match the frontend's `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Core |
+| `CORS_ALLOWED_ORIGINS`   | `http://localhost:3000`                                 | both backends        |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY` / `R2_SECRET_KEY` | _(none)_ — required for media upload to actually work locally; see below | Core |
+| `R2_BUCKET`              | `dannest-media`                                         | Core                 |
+| `R2_PUBLIC_BASE_URL`     | _(none)_                                                | Core                 |
+| `MEDIA_MAX_FILE_SIZE`    | `5MB`                                                   | Core                 |
 
 > Local dev credentials are intentionally simple. **Never** use these in production —
 > production supplies real secrets via environment variables (see `infra/terraform.tfvars`,
 > gitignored).
+
+**Cloudflare R2 (media uploads)** doesn't have a zero-config local default like
+the rest of the table — without real credentials, everything runs fine except
+uploading an image. Copy
+`services/core/src/main/resources/application-local.yml.example` to
+`application-local.yml` (gitignored) in the same folder, fill in your R2
+values, and `./gradlew bootRun` picks it up automatically via the `local`
+Spring profile.
+
+**Frontend (`web/`)** reads its own env vars at *build* time, from
+`web/.env.local` (gitignored, not committed):
+
+| Variable                          | Default (local)          |
+| ----------------------------------- | -------------------------- |
+| `NEXT_PUBLIC_API_URL`               | `http://localhost:8090`    |
+| `NEXT_PUBLIC_NOTIFICATION_API_URL`  | `http://localhost:8091`    |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`      | _(none — Google Sign-In won't work until this is set)_ |
 
 ## Database migrations
 
@@ -145,7 +174,9 @@ files to `services/core/src/main/resources/db/migration/` or
 `services/notification/src/main/resources/db/migration/` named
 `V1__description.sql`, `V2__...`, etc. They run automatically on that
 service's startup. The two services **never share a schema** — see
-[Lesson 4](docs/lesson-4-microservices.md) for why.
+[Lesson 4](docs/lessons/lesson-4-microservices.md) for why, and
+[`docs/tech/db-schema.md`](docs/tech/db-schema.md) for the current schema
+itself (ER diagram + table reference, both services).
 
 ## Deployment (CI/CD + IaC)
 
@@ -163,23 +194,36 @@ RabbitMQ instance, and an **Upstash** Redis instance (Core only).
   services; it can't push config changes (env vars, build settings) to a
   service that already exists on the free plan. Those updates go through
   Render's REST API directly instead. See
-  [Lesson 4, section 5](docs/lesson-4-microservices.md#5-the-re-apply-gotcha-the-part-that-actually-broke)
+  [Lesson 4, section 5](docs/lessons/lesson-4-microservices.md#5-the-re-apply-gotcha-the-part-that-actually-broke)
   for the full story — it's a real incident this project hit.
 
-See [`docs/lesson-2-cicd.md`](docs/lesson-2-cicd.md) for a full, beginner-friendly
-explanation of the pipeline itself, and
-[`docs/lesson-4-microservices.md`](docs/lesson-4-microservices.md) for how a
-third service gets added to it.
+See [`docs/lessons/lesson-2-cicd.md`](docs/lessons/lesson-2-cicd.md) for a
+full, beginner-friendly explanation of the pipeline itself, and
+[`docs/lessons/lesson-4-microservices.md`](docs/lessons/lesson-4-microservices.md)
+for how a third service gets added to it.
 
 ## Learning notes
 
-This is a learning project — the `docs/` folder explains it from scratch:
+This is a learning project — `docs/` explains it from scratch, split into two
+kinds of notes:
 
-- [Lesson 1 — Monorepo](docs/lesson-1-monorepo.md)
-- [Lesson 2 — CI/CD](docs/lesson-2-cicd.md)
-- [Lesson 3 — Google Auth](docs/lesson-3-google-auth.md)
-- [Lesson 4 — Monolith → Microservices](docs/lesson-4-microservices.md)
-- [Lesson 5 — Redis & refresh tokens](docs/lesson-5-redis-refresh-tokens.md)
+**Lessons** (`docs/lessons/`) — chronological, narrative "from zero" write-ups
+of *why* things were built the way they were, including the mistakes:
+
+- [Lesson 1 — Monorepo](docs/lessons/lesson-1-monorepo.md)
+- [Lesson 2 — CI/CD](docs/lessons/lesson-2-cicd.md)
+- [Lesson 3 — Google Auth](docs/lessons/lesson-3-google-auth.md)
+- [Lesson 4 — Monolith → Microservices](docs/lessons/lesson-4-microservices.md)
+- [Lesson 5 — Redis & refresh tokens](docs/lessons/lesson-5-redis-refresh-tokens.md)
+
+**Technical reference** (`docs/tech/`) — current-state reference docs, not a
+story:
+
+- [Architecture & flows](docs/tech/architecture-flows.md) — every service
+  (ours and third-party), the libraries each of ours uses, and diagrams for
+  key request/event flows (login, create-post → notification, media upload).
+- [Database schema](docs/tech/db-schema.md) — ER diagram and table reference
+  for both services' databases.
 
 ## Roadmap
 
@@ -194,6 +238,10 @@ This is a learning project — the `docs/` folder explains it from scratch:
 - [x] Realtime notifications over WebSocket/STOMP, with polling fallback
 - [x] Redis-backed refresh tokens (short-lived JWT access token + revocable,
       rotating refresh token in an httpOnly cookie)
-- [ ] Media service (file uploads), following the same service-boundary pattern
+- [x] Media uploads (avatars, collection covers, post images) via Cloudflare
+      R2, with display-time crop/framing — currently a feature inside
+      `services/core`, not yet its own service
+- [ ] Extract media into its own service, following the same
+      service-boundary pattern as Notification
 - [ ] Redis caching (feeds), and pub/sub for realtime once Notification runs
       on more than one instance
