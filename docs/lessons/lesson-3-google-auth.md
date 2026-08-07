@@ -62,7 +62,9 @@ our own wristband.
         │
 6. Backend mints OUR OWN JWT and returns it
         │
-7. Web stores the JWT (localStorage) and shows the user as logged in
+7. Web stores the JWT and shows the user as logged in
+        │  (originally localStorage — changed to in-memory-only in Lesson 5,
+        │   to close an XSS hole; see there for why)
         │
 8. Every later request:  Authorization: Bearer <our-jwt>
         ▼
@@ -84,6 +86,11 @@ our own wristband.
 
 ## 6. "Stateless" — the backend has no memory 🧠❌
 
+*(True as originally built here. [Lesson 5](./lesson-5-redis-refresh-tokens.md)
+later adds a Redis-backed refresh token, which **is** server-side state — but
+only for that one piece. The access token below still works exactly as
+described: signature-only, no lookup.)*
+
 Our backend keeps **no login sessions** in memory or a database. Everything
 needed is *inside* the JWT, and the JWT is **signed** so it can't be faked.
 
@@ -94,7 +101,7 @@ Request comes in with a JWT
    → invalid/expired?  ❌ 401 Unauthorized
 ```
 
-No server-side session store. This is why it's called a **stateless** API —
+No server-side session store (for the access token). This is why it's called a **stateless** API —
 easy to scale, nothing to "remember."
 
 ## 7. Client ID vs Client Secret vs JS origins
@@ -152,7 +159,7 @@ logout                       → guard → /login
 | Start login (get Google token) | `GoogleSignIn.tsx` |
 | Exchange for our JWT | `POST /api/v1/auth/google` |
 | Who am I? | `GET /api/v1/auth/me` (send `Authorization: Bearer <jwt>`) |
-| Store the JWT | `localStorage` key `dannest_token` |
+| Store the JWT | in-memory only, `web/src/lib/token.ts` — see [Lesson 5](./lesson-5-redis-refresh-tokens.md#4-the-pieces-and-what-each-is) (superseded the original `localStorage` approach shown above) |
 | Add a login provider later | new verifier + branch in `AuthService` |
 | Fix "no registered origin" | add the site to **Authorized JavaScript origins** |
 

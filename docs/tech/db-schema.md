@@ -1,7 +1,7 @@
 # DanNest — Database Schema
 
 DanNest is split into two services, each with its **own** Postgres database —
-see [Lesson 4](lesson-4-microservices.md). This doc covers **Core's**
+see [Lesson 4](../lessons/lesson-4-microservices.md). This doc covers **Core's**
 database (social + collections); the notification service's much smaller
 schema is at the bottom.
 
@@ -9,7 +9,7 @@ schema is at the bottom.
 
 Source of truth for the fields is `dannest-project-spec.md`; the tables are
 created by the Flyway migrations in
-[`services/core/src/main/resources/db/migration/`](../services/core/src/main/resources/db/migration/)
+[`services/core/src/main/resources/db/migration/`](../../services/core/src/main/resources/db/migration/)
 and mapped by JPA entities under `services/core/src/main/java/com/dannest/`.
 
 ## Base entity
@@ -82,7 +82,6 @@ erDiagram
         real crop_y "0..1, default 0"
         real crop_width "0..1, default 1"
         real crop_height "0..1, default 1"
-        real zoom "default 1.0"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -132,27 +131,30 @@ erDiagram
 | `post_likes` | a user's like | own `id`, unique `(post_id, user_id)` |
 | `collection_follows` | a user following a collection (to be notified of new posts) | `follower_id` → `users`; `collection_id` → `collections`; unique `(follower_id, collection_id)` |
 
-## Image crop / zoom (framing)
+## Image crop (framing)
 
 Framing lives **on the `media` row** (one crop per asset), so it's reused everywhere
 the image is referenced — collection cover, user avatar, post image — with **no
-duplicate columns** on those tables.
+duplicate columns** on those tables. Added by
+[`V3__archive_and_media_crop.sql`](../../services/core/src/main/resources/db/migration/V3__archive_and_media_crop.sql).
 
 - `crop_x, crop_y, crop_width, crop_height` — the visible rectangle as fractions
-  (0..1) of the original image. This alone is enough to render.
-- `zoom` — optional; the rect already implies zoom, but this restores the cropper's
-  exact state when re-editing.
+  (0..1) of the original image ([ImageCrop.java](../../services/core/src/main/java/com/dannest/media/ImageCrop.java)).
+  This alone is enough to render.
+- **Zoom is not persisted.** The cropper UI ([ImageCropper.tsx](../../web/src/components/ImageCropper.tsx),
+  built on `react-easy-crop`) tracks zoom client-side only while the user is
+  actively dragging/scaling — it's converted to the equivalent crop rectangle
+  before being sent to the API ([CropDto.java](../../services/core/src/main/java/com/dannest/media/dto/CropDto.java)
+  only has `x, y, width, height`). Re-opening the cropper later starts from
+  that rectangle, not a remembered zoom level.
 - **Render**: apply via CSS now (`object-position` + scale); the same metadata maps
   directly to an image CDN (e.g. Cloudflare Images) later with no schema change.
 
 Because framing is on `media`, an **external image is also a `media` row**
-(`source = EXTERNAL`, `storage_key` null, `url` = the link). This unifies every
-image reference behind `…_media_id` and lets links carry crop too. It supersedes the
-transitional `collections.cover_url` (V4), which will be migrated to an EXTERNAL
-`media` row + `cover_media_id`.
-
-> Migration to implement this: `media` gains `source`, nullable `storage_key`, and the
-> five crop columns; existing `collections.cover_url` values become EXTERNAL `media` rows.
+(`source = EXTERNAL`, `storage_key` null, `url` = the link) — `collections` has
+always referenced its cover through `cover_media_id` (`media`'s FK), never a raw
+URL column, so this unifies every image reference behind `…_media_id` and lets
+links carry crop too.
 
 ## Notes
 
@@ -165,7 +167,7 @@ transitional `collections.cover_url` (V4), which will be migrated to an EXTERNAL
 ## Notification service's database
 
 A separate, much smaller Postgres owned by `services/notification` —
-[`services/notification/src/main/resources/db/migration/V1__init.sql`](../services/notification/src/main/resources/db/migration/V1__init.sql).
+[`services/notification/src/main/resources/db/migration/V1__init.sql`](../../services/notification/src/main/resources/db/migration/V1__init.sql).
 One table, **no foreign keys to Core's tables** (different database — Postgres
 can't enforce a FK across a network boundary, and this service shouldn't be
 querying Core's database anyway):
@@ -182,6 +184,6 @@ querying Core's database anyway):
 | `created_at`, `updated_at` | timestamptz | |
 
 Filled entirely by consuming `DannestEvent` messages off RabbitMQ (see
-[Lesson 4](lesson-4-microservices.md)) — this service never queries Core's
+[Lesson 4](../lessons/lesson-4-microservices.md)) — this service never queries Core's
 database to render a notification, which is *why* the denormalized columns
 exist instead of just storing IDs.
