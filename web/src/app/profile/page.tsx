@@ -5,12 +5,14 @@ import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import ImageCropper from "@/components/ImageCropper";
+import LoadingState from "@/components/LoadingState";
 import { useAuth } from "@/lib/auth";
 import { coverStyle } from "@/lib/cover";
 import { formatJoinDate } from "@/lib/time";
 import { createExternalMedia, uploadMedia, updateMediaCrop, FULL_CROP, type Crop } from "@/lib/media";
 import { fileToWebp } from "@/lib/image";
 import { getProfile, updateMyProfile, type Profile } from "@/lib/profile";
+import { useToast } from "@/lib/toast";
 
 // Source being cropped in the avatar editor.
 type AvatarEditing =
@@ -29,6 +31,7 @@ type PendingAvatar =
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuth();
+  const { notify } = useToast();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -207,6 +210,7 @@ export default function ProfilePage() {
       updateUser({ username: updated.username, avatarUrl: updated.avatarUrl, avatarCrop: updated.avatarCrop });
       setPendingAvatar(null);
       setEditing(false);
+      notify("Profile updated");
     } catch {
       setError("Couldn't save. Please try again.");
     } finally {
@@ -261,7 +265,7 @@ export default function ProfilePage() {
           {loadError && <p className="mb-3 text-sm text-rose-600 dark:text-rose-400">{loadError}</p>}
 
           {!profile ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <LoadingState />
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
               {/* identity — centered */}

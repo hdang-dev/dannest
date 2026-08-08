@@ -8,11 +8,14 @@ import { listSubscriptions, unfollowCollection } from "@/lib/follows";
 import type { Collection } from "@/lib/collections";
 import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
+import { useToast } from "@/lib/toast";
+import LoadingState from "@/components/LoadingState";
 
 export default function SubscriptionsPage() {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { notify } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -30,12 +33,12 @@ export default function SubscriptionsPage() {
 
   async function handleUnfollow(c: Collection) {
     setBusyId(c.id);
-    setError(null);
     try {
       await unfollowCollection(c.id);
       setCollections((cur) => cur?.filter((x) => x.id !== c.id) ?? null);
+      notify("Unfollowed");
     } catch {
-      setError("Unfollow failed. Please try again.");
+      notify("Unfollow failed. Please try again.", "error");
     } finally {
       setBusyId(null);
     }
@@ -52,7 +55,7 @@ export default function SubscriptionsPage() {
           {error && <p className="mb-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
           {collections === null ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <LoadingState minHeight="30vh" />
           ) : collections.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
               <p className="text-sm text-slate-500 dark:text-slate-400">

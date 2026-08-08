@@ -5,6 +5,8 @@ import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import CollectionFormModal from "@/components/CollectionFormModal";
 import CollectionCard from "@/components/CollectionCard";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import LoadingState from "@/components/LoadingState";
 import {
   archiveCollection,
   listCollections,
@@ -12,6 +14,7 @@ import {
   type Collection,
   type Visibility,
 } from "@/lib/collections";
+import { useToast } from "@/lib/toast";
 
 type ModalState = { mode: "create" } | { mode: "edit"; collection: Collection } | null;
 type VisibilityFilter = "ALL" | Visibility;
@@ -24,6 +27,8 @@ export default function CollectionsPage() {
   const [visFilter, setVisFilter] = useState<VisibilityFilter>("ALL");
   const [modal, setModal] = useState<ModalState>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<Collection | null>(null);
+  const { notify } = useToast();
 
   // Search + filters run on the backend; debounced so typing doesn't fire per keystroke.
   useEffect(() => {
@@ -56,6 +61,7 @@ export default function CollectionsPage() {
   }, [query, showArchived, visFilter]);
 
   function upsert(saved: Collection) {
+    notify(modal?.mode === "edit" ? "Collection updated" : "Collection created");
     setModal(null);
     const matches = showArchived ? saved.archivedAt !== null : saved.archivedAt === null;
     setCollections((cur) => {
@@ -69,24 +75,25 @@ export default function CollectionsPage() {
     });
   }
 
-  async function handleArchive(c: Collection) {
-    if (!window.confirm(`Archive "${c.name}"? You can restore it later.`)) return;
-    await mutate(c.id, () => archiveCollection(c.id), "Archive failed. Please try again.");
+  async function handleConfirmedArchive() {
+    if (!confirmTarget) return;
+    await mutate(confirmTarget.id, () => archiveCollection(confirmTarget.id), "Archived", "Archive failed. Please try again.");
+    setConfirmTarget(null);
   }
 
   async function handleRestore(c: Collection) {
-    await mutate(c.id, () => unarchiveCollection(c.id), "Restore failed. Please try again.");
+    await mutate(c.id, () => unarchiveCollection(c.id), "Restored", "Restore failed. Please try again.");
   }
 
   // Archive/restore both move the item out of the current view, so drop it from the list.
-  async function mutate(id: string, action: () => Promise<unknown>, failMsg: string) {
+  async function mutate(id: string, action: () => Promise<unknown>, successMsg: string, failMsg: string) {
     setBusyId(id);
-    setError(null);
     try {
       await action();
       setCollections((cur) => cur?.filter((x) => x.id !== id) ?? null);
+      notify(successMsg);
     } catch {
-      setError(failMsg);
+      notify(failMsg, "error");
     } finally {
       setBusyId(null);
     }
@@ -144,7 +151,7 @@ export default function CollectionsPage() {
           {error && <p className="mb-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
           {collections === null ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <LoadingState minHeight="30vh" />
           ) : collections.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 py-12 text-center dark:border-slate-700">
               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -171,7 +178,7 @@ export default function CollectionsPage() {
                   collection={c}
                   busy={busyId === c.id}
                   onEdit={() => setModal({ mode: "edit", collection: c })}
-                  onArchive={() => handleArchive(c)}
+                  onArchive={() => setConfirmTarget(c)}
                   onRestore={() => handleRestore(c)}
                 />
               ))}
@@ -186,6 +193,18 @@ export default function CollectionsPage() {
           collection={modal.mode === "edit" ? modal.collection : undefined}
           onClose={() => setModal(null)}
           onSaved={upsert}
+        />
+      )}
+
+      {confirmTarget && (
+        <ConfirmDialog
+          title="Archive collection?"
+          message={`"${confirmTarget.name}" will move out of your active collections. You can restore it later.`}
+          confirmLabel="Archive"
+          danger
+          busy={busyId === confirmTarget.id}
+          onConfirm={handleConfirmedArchive}
+          onCancel={() => setConfirmTarget(null)}
         />
       )}
     </RequireAuth>

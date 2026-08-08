@@ -30,7 +30,7 @@ export default function CollectionsStrip() {
   return (
     <section>
       <div className="mb-2 flex items-center justify-between px-1">
-        <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400">Collections</h2>
+        <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400">Discover</h2>
         <Link
           href="/my-collections"
           className="text-xs font-medium text-teal-600 dark:text-teal-400"

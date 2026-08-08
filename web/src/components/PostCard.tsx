@@ -9,6 +9,7 @@ import { formatRelativeTime } from "@/lib/time";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
+import { HeartIcon, CommentIcon } from "./icons";
 import type { Post } from "@/lib/posts";
 
 function formatCount(n: number) {
@@ -152,7 +153,7 @@ export default function PostCard({ post, onEdit, onLike, focusPostId, focusComme
               : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
         >
-          <span>{post.likedByMe ? "❤️" : "🤍"}</span>
+          <HeartIcon filled={post.likedByMe} />
           {formatCount(post.likeCount)}
         </button>
 
@@ -164,7 +165,8 @@ export default function PostCard({ post, onEdit, onLike, focusPostId, focusComme
               : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
           }`}
         >
-          💬 {formatCount(commentCount)}
+          <CommentIcon />
+          {formatCount(commentCount)}
         </button>
       </div>
 

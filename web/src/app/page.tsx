@@ -5,9 +5,11 @@ import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import CollectionsStrip from "@/components/CollectionsStrip";
 import PostFeed from "@/components/PostFeed";
+import LoadingState from "@/components/LoadingState";
 import NewPostFab from "@/components/NewPostFab";
 import PostComposerModal from "@/components/PostComposerModal";
 import { listFeed, likePost, unlikePost, type Post } from "@/lib/posts";
+import { useToast } from "@/lib/toast";
 
 type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
 
@@ -15,6 +17,7 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
+  const { notify } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +48,7 @@ export default function Home() {
 
   // A saved post: replace it if it's already in the feed, else prepend it.
   function upsert(saved: Post) {
+    notify(composer?.mode === "edit" ? "Post updated" : "Post created");
     setComposer(null);
     setPosts((cur) => {
       if (!cur) return [saved];
@@ -67,7 +71,7 @@ export default function Home() {
           {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
           {posts === null ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <LoadingState />
           ) : (
             <PostFeed
               posts={posts}

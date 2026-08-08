@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
+import LoadingState from "@/components/LoadingState";
 import { useAuth } from "@/lib/auth";
 import { coverStyle } from "@/lib/cover";
 import { formatJoinDate } from "@/lib/time";
@@ -43,7 +44,7 @@ export default function UserProfilePage() {
 
         <main className="mx-auto max-w-2xl px-4 py-6">
           {profile === undefined ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <LoadingState />
           ) : profile === null ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">User not found.</p>
           ) : (

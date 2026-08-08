@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "r
 import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import ImageCropper from "./ImageCropper";
 import PostGallery from "./PostGallery";
+import { HeartIcon, CommentIcon } from "./icons";
 import { fileToWebp } from "@/lib/image";
 import { coverStyle } from "@/lib/cover";
 import { useAuth } from "@/lib/auth";
@@ -328,8 +329,12 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
                 }))}
               />
               <div className="flex items-center gap-3 p-3 text-sm text-slate-400">
-                <span>🤍 0</span>
-                <span>💬 0</span>
+                <span className="flex items-center gap-1.5">
+                  <HeartIcon /> 0
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <CommentIcon /> 0
+                </span>
               </div>
             </article>
           ) : (

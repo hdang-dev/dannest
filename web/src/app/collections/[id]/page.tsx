@@ -9,11 +9,14 @@ import PostFeed from "@/components/PostFeed";
 import NewPostFab from "@/components/NewPostFab";
 import PostComposerModal from "@/components/PostComposerModal";
 import CollectionFormModal from "@/components/CollectionFormModal";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
+import LoadingState from "@/components/LoadingState";
 import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
 import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
 import { followCollection, getFollowStatus, unfollowCollection } from "@/lib/follows";
@@ -28,11 +31,14 @@ export default function CollectionPage() {
   const focusPostId = searchParams.get("post");
   const focusCommentId = searchParams.get("comment");
   const { user } = useAuth();
+  const { notify } = useToast();
   const [collection, setCollection] = useState<Collection | null | undefined>(undefined);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   // Load the real collection + its posts from the backend.
   useEffect(() => {
@@ -77,6 +83,7 @@ export default function CollectionPage() {
       await (next ? followCollection(id) : unfollowCollection(id));
     } catch {
       setFollowing(!next);
+      notify("Couldn't update follow status. Please try again.", "error");
     } finally {
       setFollowBusy(false);
     }
@@ -99,6 +106,7 @@ export default function CollectionPage() {
 
   // A saved post: replace it if already listed, else prepend.
   function upsert(saved: Post) {
+    notify(composer?.mode === "edit" ? "Post updated" : "Post created");
     setComposer(null);
     setPosts((cur) => {
       if (!cur) return [saved];
@@ -111,10 +119,15 @@ export default function CollectionPage() {
   }
 
   async function handleArchive() {
-    setMenuOpen(false);
-    if (!window.confirm(`Archive "${collection?.name}"? You can restore it later.`)) return;
-    await archiveCollection(id);
-    router.push("/my-collections");
+    setArchiving(true);
+    try {
+      await archiveCollection(id);
+      router.push("/my-collections");
+    } catch {
+      notify("Archive failed. Please try again.", "error");
+      setArchiving(false);
+      setConfirmingArchive(false);
+    }
   }
 
   return (
@@ -123,8 +136,8 @@ export default function CollectionPage() {
         <Header />
 
         {collection === undefined ? (
-          <main className="mx-auto max-w-2xl px-4 py-6">
-            <p className="text-sm text-slate-400">Loading…</p>
+          <main className="mx-auto flex max-w-2xl px-4 py-6">
+            <LoadingState />
           </main>
         ) : collection === null ? (
           <main className="mx-auto max-w-2xl px-4 py-6">
@@ -180,7 +193,10 @@ export default function CollectionPage() {
                             Edit
                           </button>
                           <button
-                            onClick={handleArchive}
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setConfirmingArchive(true);
+                            }}
                             className="w-full px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                           >
                             Archive
@@ -253,7 +269,7 @@ export default function CollectionPage() {
               </p>
 
               {posts === null ? (
-                <p className="text-sm text-slate-400">Loading…</p>
+                <LoadingState minHeight="30vh" />
               ) : (
                 <PostFeed
                   posts={posts}
@@ -287,9 +303,22 @@ export default function CollectionPage() {
           collection={collection}
           onClose={() => setEditing(false)}
           onSaved={(saved) => {
+            notify("Collection updated");
             setCollection(saved);
             setEditing(false);
           }}
+        />
+      )}
+
+      {confirmingArchive && (
+        <ConfirmDialog
+          title="Archive collection?"
+          message={`"${collection?.name}" will move out of your active collections. You can restore it later.`}
+          confirmLabel="Archive"
+          danger
+          busy={archiving}
+          onConfirm={handleArchive}
+          onCancel={() => setConfirmingArchive(false)}
         />
       )}
     </RequireAuth>
