@@ -12,12 +12,18 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "collections")
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Collection extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -38,6 +44,7 @@ public class Collection extends BaseEntity {
     @Setter
     private Media cover;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Setter
@@ -46,15 +53,6 @@ public class Collection extends BaseEntity {
     /** Non-null once archived (soft-deleted); archived collections are hidden from listings. */
     @Column(name = "archived_at")
     private Instant archivedAt;
-
-    protected Collection() {
-    }
-
-    public Collection(User owner, String name, Visibility visibility) {
-        this.owner = owner;
-        this.name = name;
-        this.visibility = visibility;
-    }
 
     public boolean isArchived() {
         return archivedAt != null;

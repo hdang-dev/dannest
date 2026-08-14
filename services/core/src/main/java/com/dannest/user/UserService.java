@@ -61,7 +61,7 @@ public class UserService {
     /** Resolve an avatar media id, enforcing that the caller owns the referenced asset. */
     private Media resolveOwnedAvatar(UUID userId, UUID mediaId) {
         Media media = mediaRepository
-                .findById(mediaId)
+                .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
         if (!media.getOwner().getId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");

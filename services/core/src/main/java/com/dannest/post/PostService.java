@@ -64,7 +64,12 @@ public class PostService {
         Collection collection = resolveOwnedCollection(userId, request.collectionId());
         User author = userRepository.getReferenceById(userId);
 
-        Post post = postRepository.save(new Post(collection, author, request.title().trim(), trimToNull(request.content())));
+        Post post = postRepository.save(Post.builder()
+                .collection(collection)
+                .author(author)
+                .title(request.title().trim())
+                .content(trimToNull(request.content()))
+                .build());
         attachMedia(userId, post, request.mediaIds());
         notifyFollowers(userId, collection, post);
         return toResponse(post, userId);
@@ -112,6 +117,7 @@ public class PostService {
             String like = "%" + q.toLowerCase() + "%";
             filters.add((root, cq, cb) -> cb.like(cb.lower(root.get("title")), like));
         }
+        filters.add((root, cq, cb) -> cb.isNull(root.get("deletedAt")));
 
         Page<Post> page = postRepository.findAll(Specification.allOf(filters), effective);
         List<PostResponse> content = toResponses(page.getContent(), userId);
@@ -150,17 +156,20 @@ public class PostService {
         return toResponse(post, userId);
     }
 
-    /** Delete a post (its images, likes, and comments cascade in the database). */
+    /** Soft-delete a post — hidden from feeds/lookups but recoverable; images, likes, and comments stay put. */
     public void delete(UUID userId, UUID postId) {
         Post post = findOwned(userId, postId);
-        postRepository.delete(post);
+        post.softDelete();
     }
 
     /** Like a post the caller can view (idempotent — a second like is a no-op). */
     public void like(UUID userId, UUID postId) {
         Post post = findVisible(userId, postId);
         if (!postLikeRepository.existsByPost_IdAndUser_Id(postId, userId)) {
-            postLikeRepository.save(new PostLike(post, userRepository.getReferenceById(userId)));
+            postLikeRepository.save(PostLike.builder()
+                    .post(post)
+                    .user(userRepository.getReferenceById(userId))
+                    .build());
         }
     }
 
@@ -240,7 +249,11 @@ public class PostService {
                 continue; // ignore nulls and duplicates (the (post, media) pair is unique)
             }
             Media media = resolveOwnedMedia(userId, mediaId);
-            postMediaRepository.save(new PostMedia(post, media, order++));
+            postMediaRepository.save(PostMedia.builder()
+                    .post(post)
+                    .media(media)
+                    .displayOrder(order++)
+                    .build());
         }
     }
 
@@ -267,7 +280,7 @@ public class PostService {
 
     private Post findById(UUID postId) {
         return postRepository
-                .findById(postId)
+                .findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
     }
 
@@ -294,7 +307,7 @@ public class PostService {
 
     private Media resolveOwnedMedia(UUID userId, UUID mediaId) {
         Media media = mediaRepository
-                .findById(mediaId)
+                .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
         if (!media.getOwner().getId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");

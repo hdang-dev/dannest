@@ -1,5 +1,6 @@
 package com.dannest.post;
 
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -9,4 +10,7 @@ public interface PostRepository
     // Dynamic filtering (scope / collection / search) is built with Specifications
     // in PostService, so only present filters become SQL predicates — mirroring
     // CollectionRepository, and avoiding nullable bind parameters Postgres can't type.
+
+    /** An active (not soft-deleted) post — single-post lookups (get/update/delete) go through this. */
+    Optional<Post> findByIdAndDeletedAtIsNull(UUID id);
 }

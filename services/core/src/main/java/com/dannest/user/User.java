@@ -8,12 +8,18 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "users")
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User extends BaseEntity {
 
     @Column(nullable = false, unique = true, length = 50)
@@ -21,12 +27,10 @@ public class User extends BaseEntity {
     private String username;
 
     @Column(nullable = false, unique = true, length = 255)
-    @Setter
     private String email;
 
-    /** Null for OAuth users (they authenticate via a provider, not a password). */
+    /** Null for OAuth users (they authenticate via a provider, not a password). Never set today — no password-signup flow exists yet. */
     @Column(name = "password_hash", length = 255)
-    @Setter
     private String passwordHash;
 
     /** Nullable — set after the avatar Media row exists (avoids a circular NOT NULL). */
@@ -52,23 +56,14 @@ public class User extends BaseEntity {
     @Setter
     private String avatarUrl;
 
-    protected User() {
-    }
-
-    public User(String username, String email, String passwordHash) {
-        this.username = username;
-        this.email = email;
-        this.passwordHash = passwordHash;
-    }
-
     /** Create a user authenticated through an external provider (e.g. Google). */
     public static User forProvider(String username, String email, String provider, String providerId, String avatarUrl) {
-        User u = new User();
-        u.username = username;
-        u.email = email;
-        u.provider = provider;
-        u.providerId = providerId;
-        u.avatarUrl = avatarUrl;
-        return u;
+        return User.builder()
+                .username(username)
+                .email(email)
+                .provider(provider)
+                .providerId(providerId)
+                .avatarUrl(avatarUrl)
+                .build();
     }
 }

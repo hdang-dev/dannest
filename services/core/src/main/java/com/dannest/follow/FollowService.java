@@ -34,7 +34,10 @@ public class FollowService {
     public void follow(UUID userId, UUID collectionId) {
         Collection collection = findFollowable(userId, collectionId);
         if (!followRepository.existsByFollower_IdAndCollection_Id(userId, collectionId)) {
-            followRepository.save(new CollectionFollow(userRepository.getReferenceById(userId), collection));
+            followRepository.save(CollectionFollow.builder()
+                    .follower(userRepository.getReferenceById(userId))
+                    .collection(collection)
+                    .build());
         }
     }
 

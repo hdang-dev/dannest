@@ -39,7 +39,11 @@ public class CollectionService {
         User owner = userRepository.getReferenceById(userId);
         Visibility visibility = request.visibility() != null ? request.visibility() : Visibility.PUBLIC;
 
-        Collection collection = new Collection(owner, request.name(), visibility);
+        Collection collection = Collection.builder()
+                .owner(owner)
+                .name(request.name())
+                .visibility(visibility)
+                .build();
         collection.setDescription(request.description());
         if (request.coverMediaId() != null) {
             collection.setCover(resolveOwnedCover(userId, request.coverMediaId()));
@@ -166,7 +170,7 @@ public class CollectionService {
     /** Resolve a cover media id, enforcing that the caller owns the referenced asset. */
     private Media resolveOwnedCover(UUID userId, UUID mediaId) {
         Media media = mediaRepository
-                .findById(mediaId)
+                .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
         if (!media.getOwner().getId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");

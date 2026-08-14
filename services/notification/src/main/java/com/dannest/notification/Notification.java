@@ -8,7 +8,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /**
  * An event the recipient should be told about. Denormalized on write from the {@code
@@ -17,6 +20,9 @@ import lombok.Getter;
 @Entity
 @Table(name = "notifications")
 @Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Notification extends BaseEntity {
 
     @Column(name = "recipient_id", nullable = false)
@@ -49,30 +55,6 @@ public class Notification extends BaseEntity {
 
     @Column(name = "read_at")
     private Instant readAt;
-
-    protected Notification() {
-    }
-
-    public Notification(
-            UUID recipientId,
-            UUID actorId,
-            String actorUsername,
-            String actorAvatarUrl,
-            NotificationType type,
-            UUID collectionId,
-            String collectionName,
-            UUID postId,
-            UUID commentId) {
-        this.recipientId = recipientId;
-        this.actorId = actorId;
-        this.actorUsername = actorUsername;
-        this.actorAvatarUrl = actorAvatarUrl;
-        this.type = type;
-        this.collectionId = collectionId;
-        this.collectionName = collectionName;
-        this.postId = postId;
-        this.commentId = commentId;
-    }
 
     public boolean isRead() {
         return readAt != null;

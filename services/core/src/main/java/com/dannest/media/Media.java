@@ -1,6 +1,6 @@
 package com.dannest.media;
 
-import com.dannest.common.BaseEntity;
+import com.dannest.common.SoftDeletableEntity;
 import com.dannest.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -11,7 +11,10 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
@@ -22,12 +25,16 @@ import lombok.Setter;
 @Entity
 @Table(name = "media")
 @Getter
-public class Media extends BaseEntity {
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Media extends SoftDeletableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MediaSource source = MediaSource.UPLOAD;
@@ -48,31 +55,17 @@ public class Media extends BaseEntity {
 
     private Integer height;
 
+    @Builder.Default
     @Embedded
     @Setter
     private ImageCrop crop = ImageCrop.full();
 
-    protected Media() {
-    }
-
-    /** An uploaded asset (bytes stored in R2). */
-    public Media(User owner, String storageKey, String url, String mimeType, Long size, Integer width, Integer height) {
-        this.owner = owner;
-        this.source = MediaSource.UPLOAD;
-        this.storageKey = storageKey;
-        this.url = url;
-        this.mimeType = mimeType;
-        this.size = size;
-        this.width = width;
-        this.height = height;
-    }
-
     /** An external image referenced by URL (nothing stored). */
     public static Media external(User owner, String url) {
-        Media media = new Media();
-        media.owner = owner;
-        media.source = MediaSource.EXTERNAL;
-        media.url = url;
-        return media;
+        return Media.builder()
+                .owner(owner)
+                .source(MediaSource.EXTERNAL)
+                .url(url)
+                .build();
     }
 }

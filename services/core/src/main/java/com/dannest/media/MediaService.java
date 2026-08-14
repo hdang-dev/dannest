@@ -65,7 +65,14 @@ public class MediaService {
 
         String url = props.publicBaseUrl() + "/" + key;
         User owner = userRepository.getReferenceById(userId);
-        Media media = new Media(owner, key, url, contentType, file.getSize(), null, null);
+        Media media = Media.builder()
+                .owner(owner)
+                .source(MediaSource.UPLOAD)
+                .storageKey(key)
+                .url(url)
+                .mimeType(contentType)
+                .size(file.getSize())
+                .build();
         if (crop != null) {
             media.setCrop(crop);
         }
@@ -92,6 +99,10 @@ public class MediaService {
         return MediaResponse.from(media);
     }
 
+    /**
+     * Soft-delete a media asset's row (existing attachments — post images, avatars, covers —
+     * keep resolving) and, for uploads, actually free the bytes in R2.
+     */
     public void delete(UUID userId, UUID mediaId) {
         Media media = findOwned(userId, mediaId);
         // EXTERNAL media has no bytes in R2 — only delete the object for uploads.
@@ -101,12 +112,12 @@ public class MediaService {
                     .key(media.getStorageKey())
                     .build());
         }
-        mediaRepository.delete(media);
+        media.softDelete();
     }
 
     private Media findOwned(UUID userId, UUID mediaId) {
         Media media = mediaRepository
-                .findById(mediaId)
+                .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
         if (!media.getOwner().getId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");

@@ -1,7 +1,7 @@
 package com.dannest.post;
 
 import com.dannest.collection.Collection;
-import com.dannest.common.BaseEntity;
+import com.dannest.common.SoftDeletableEntity;
 import com.dannest.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,13 +9,19 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "posts")
 @Getter
-public class Post extends BaseEntity {
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Post extends SoftDeletableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "collection_id", nullable = false)
@@ -33,14 +39,4 @@ public class Post extends BaseEntity {
     @Column(columnDefinition = "text")
     @Setter
     private String content;
-
-    protected Post() {
-    }
-
-    public Post(Collection collection, User author, String title, String content) {
-        this.collection = collection;
-        this.author = author;
-        this.title = title;
-        this.content = content;
-    }
 }

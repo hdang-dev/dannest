@@ -59,7 +59,7 @@ public class CommentService {
         Comment parent = null;
         if (request.parentCommentId() != null) {
             parent = commentRepository
-                    .findById(request.parentCommentId())
+                    .findByIdAndDeletedAtIsNull(request.parentCommentId())
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Comment not found: " + request.parentCommentId()));
             if (!parent.getPost().getId().equals(postId)) {
@@ -68,7 +68,12 @@ public class CommentService {
         }
 
         User author = userRepository.getReferenceById(userId);
-        Comment comment = commentRepository.save(new Comment(post, author, parent, request.content().trim()));
+        Comment comment = commentRepository.save(Comment.builder()
+                .post(post)
+                .author(author)
+                .parent(parent)
+                .content(request.content().trim())
+                .build());
         if (parent != null) {
             notificationService.notify(
                     parent.getAuthor().getId(), userId, NotificationType.COMMENT_REPLY,
@@ -83,10 +88,17 @@ public class CommentService {
         return toResponse(comment);
     }
 
-    /** Delete a comment (its replies cascade in the database). */
+    /** Soft-delete a comment and every reply beneath it (mirrors the prior DB cascade, just recoverable). */
     public void delete(UUID userId, UUID commentId) {
         Comment comment = findOwned(userId, commentId);
-        commentRepository.delete(comment);
+        softDeleteWithReplies(comment);
+    }
+
+    private void softDeleteWithReplies(Comment comment) {
+        comment.softDelete();
+        for (Comment reply : commentRepository.findByParent_IdAndDeletedAtIsNull(comment.getId())) {
+            softDeleteWithReplies(reply);
+        }
     }
 
     // ----- mapping -------------------------------------------------------------------
@@ -113,7 +125,7 @@ public class CommentService {
     /** Load a post the caller may view: its collection is PUBLIC, or the caller owns it / authored the post. */
     private Post findVisiblePost(UUID userId, UUID postId) {
         Post post = postRepository
-                .findById(postId)
+                .findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
         Collection c = post.getCollection();
         boolean owned = c.getOwner().getId().equals(userId) || post.getAuthor().getId().equals(userId);
@@ -127,7 +139,7 @@ public class CommentService {
     /** Load a comment the caller must have authored to mutate; 404 if missing, 403 if not theirs. */
     private Comment findOwned(UUID userId, UUID commentId) {
         Comment comment = commentRepository
-                .findById(commentId)
+                .findByIdAndDeletedAtIsNull(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comment not found: " + commentId));
         if (!comment.getAuthor().getId().equals(userId)) {
             throw new ForbiddenException("You do not own this comment");

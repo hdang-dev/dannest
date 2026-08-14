@@ -1,6 +1,6 @@
 package com.dannest.comment;
 
-import com.dannest.common.BaseEntity;
+import com.dannest.common.SoftDeletableEntity;
 import com.dannest.post.Post;
 import com.dannest.user.User;
 import jakarta.persistence.Column;
@@ -9,13 +9,19 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
 @Table(name = "comments")
 @Getter
-public class Comment extends BaseEntity {
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class Comment extends SoftDeletableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "post_id", nullable = false)
@@ -33,14 +39,4 @@ public class Comment extends BaseEntity {
     @Column(nullable = false, columnDefinition = "text")
     @Setter
     private String content;
-
-    protected Comment() {
-    }
-
-    public Comment(Post post, User author, Comment parent, String content) {
-        this.post = post;
-        this.author = author;
-        this.parent = parent;
-        this.content = content;
-    }
 }

@@ -61,16 +61,17 @@ public class NotificationService {
 
     /** Persist a notification from a RabbitMQ event, then push it live to a connected client. */
     public void recordFromEvent(DannestEvent event) {
-        Notification notification = new Notification(
-                event.recipientId(),
-                event.actorId(),
-                event.actorUsername(),
-                event.actorAvatarUrl(),
-                NotificationType.valueOf(event.eventType()),
-                event.collectionId(),
-                event.collectionName(),
-                event.postId(),
-                event.commentId());
+        Notification notification = Notification.builder()
+                .recipientId(event.recipientId())
+                .actorId(event.actorId())
+                .actorUsername(event.actorUsername())
+                .actorAvatarUrl(event.actorAvatarUrl())
+                .type(NotificationType.valueOf(event.eventType()))
+                .collectionId(event.collectionId())
+                .collectionName(event.collectionName())
+                .postId(event.postId())
+                .commentId(event.commentId())
+                .build();
         notification = notificationRepository.save(notification);
 
         messagingTemplate.convertAndSend(
