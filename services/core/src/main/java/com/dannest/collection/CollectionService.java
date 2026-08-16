@@ -11,7 +11,11 @@ import com.dannest.media.MediaRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -36,19 +40,18 @@ public class CollectionService {
     private final UserRepository userRepository;
 
     public CollectionResponse create(UUID userId, CreateCollectionRequest request) {
-        User owner = userRepository.getReferenceById(userId);
         Visibility visibility = request.visibility() != null ? request.visibility() : Visibility.PUBLIC;
 
         Collection collection = Collection.builder()
-                .owner(owner)
+                .ownerId(userId)
                 .name(request.name())
                 .visibility(visibility)
                 .build();
         collection.setDescription(request.description());
         if (request.coverMediaId() != null) {
-            collection.setCover(resolveOwnedCover(userId, request.coverMediaId()));
+            collection.setCoverMediaId(resolveOwnedCover(userId, request.coverMediaId()).getId());
         }
-        return CollectionResponse.from(collectionRepository.save(collection));
+        return toResponse(collectionRepository.save(collection));
     }
 
     /**
@@ -81,7 +84,7 @@ public class CollectionService {
             filters.add((root, cq, cb) -> cb.isNull(root.get("archivedAt")));
             filters.add((root, cq, cb) -> cb.equal(root.get("visibility"), Visibility.PUBLIC));
         } else {
-            filters.add((root, cq, cb) -> cb.equal(root.get("owner").get("id"), userId));
+            filters.add((root, cq, cb) -> cb.equal(root.get("ownerId"), userId));
             // archived == true → archived only; otherwise active only.
             if (Boolean.TRUE.equals(archived)) {
                 filters.add((root, cq, cb) -> cb.isNotNull(root.get("archivedAt")));
@@ -98,14 +101,16 @@ public class CollectionService {
         }
 
         Specification<Collection> spec = Specification.allOf(filters);
-        return PagedResponse.of(
-                collectionRepository.findAll(spec, effective), CollectionResponse::from);
+        var page = collectionRepository.findAll(spec, effective);
+        return new PagedResponse<>(
+                toResponses(page.getContent()), page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
 
     @Transactional(readOnly = true)
     public CollectionResponse get(UUID userId, UUID collectionId) {
         Collection collection = findVisible(userId, collectionId);
-        return CollectionResponse.from(collection);
+        return toResponse(collection);
     }
 
     public CollectionResponse update(UUID userId, UUID collectionId, UpdateCollectionRequest request) {
@@ -122,11 +127,11 @@ public class CollectionService {
         }
         // clearCover removes the cover; otherwise a new coverMediaId replaces it.
         if (Boolean.TRUE.equals(request.clearCover())) {
-            collection.setCover(null);
+            collection.setCoverMediaId(null);
         } else if (request.coverMediaId() != null) {
-            collection.setCover(resolveOwnedCover(userId, request.coverMediaId()));
+            collection.setCoverMediaId(resolveOwnedCover(userId, request.coverMediaId()).getId());
         }
-        return CollectionResponse.from(collection);
+        return toResponse(collection);
     }
 
     /** Soft-delete: archive the collection so it's hidden from listings but recoverable. */
@@ -141,10 +146,62 @@ public class CollectionService {
         collection.unarchive();
     }
 
+    // ----- mapping -------------------------------------------------------------------
+
+    CollectionResponse toResponse(Collection collection) {
+        return toResponses(List.of(collection)).get(0);
+    }
+
+    /**
+     * Map a page of collections to responses, batching the owner/owner-avatar/cover
+     * lookups into a handful of grouped queries rather than several per collection.
+     * Public — {@link com.dannest.follow.FollowService} reuses it for followed collections.
+     */
+    public List<CollectionResponse> toResponses(List<Collection> collections) {
+        if (collections.isEmpty()) {
+            return List.of();
+        }
+        Set<UUID> ownerIds = new HashSet<>();
+        for (Collection c : collections) {
+            ownerIds.add(c.getOwnerId());
+        }
+        Map<UUID, User> ownersById = new LinkedHashMap<>();
+        for (User u : userRepository.findAllById(ownerIds)) {
+            ownersById.put(u.getId(), u);
+        }
+
+        Set<UUID> mediaIds = new HashSet<>();
+        for (User owner : ownersById.values()) {
+            if (owner.getAvatarMediaId() != null) {
+                mediaIds.add(owner.getAvatarMediaId());
+            }
+        }
+        for (Collection c : collections) {
+            if (c.getCoverMediaId() != null) {
+                mediaIds.add(c.getCoverMediaId());
+            }
+        }
+        Map<UUID, Media> mediaById = new LinkedHashMap<>();
+        for (Media m : mediaRepository.findAllById(mediaIds)) {
+            mediaById.put(m.getId(), m);
+        }
+
+        return collections.stream()
+                .map(c -> {
+                    User owner = ownersById.get(c.getOwnerId());
+                    Media ownerAvatar = owner.getAvatarMediaId() != null ? mediaById.get(owner.getAvatarMediaId()) : null;
+                    Media cover = c.getCoverMediaId() != null ? mediaById.get(c.getCoverMediaId()) : null;
+                    return CollectionResponse.from(c, owner, ownerAvatar, cover);
+                })
+                .toList();
+    }
+
+    // ----- helpers -------------------------------------------------------------------
+
     /** Load a collection the caller is allowed to view: it's PUBLIC, or the caller owns it. */
     private Collection findVisible(UUID userId, UUID collectionId) {
         Collection collection = findById(collectionId);
-        boolean owned = collection.getOwner().getId().equals(userId);
+        boolean owned = collection.getOwnerId().equals(userId);
         if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
             // Hide the existence of private collections from non-owners.
             throw new ResourceNotFoundException("Collection not found: " + collectionId);
@@ -155,7 +212,7 @@ public class CollectionService {
     /** Load a collection the caller must own to mutate; 404 if missing, 403 if not theirs. */
     private Collection findOwned(UUID userId, UUID collectionId) {
         Collection collection = findById(collectionId);
-        if (!collection.getOwner().getId().equals(userId)) {
+        if (!collection.getOwnerId().equals(userId)) {
             throw new ForbiddenException("You do not own this collection");
         }
         return collection;
@@ -172,7 +229,7 @@ public class CollectionService {
         Media media = mediaRepository
                 .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
-        if (!media.getOwner().getId().equals(userId)) {
+        if (!media.getOwnerId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");
         }
         return media;

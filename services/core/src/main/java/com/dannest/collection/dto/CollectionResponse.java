@@ -30,11 +30,8 @@ public record CollectionResponse(
         Instant createdAt,
         Instant updatedAt) {
 
-    /** Map an entity to its response. Must run inside a transaction (touches lazy fields). */
-    public static CollectionResponse from(Collection collection) {
-        Media cover = collection.getCover();
-        User owner = collection.getOwner();
-        Media ownerAvatar = owner.getAvatar();
+    /** Map an entity to its response. Caller resolves the owner/cover/ownerAvatar (batched — see CollectionService). */
+    public static CollectionResponse from(Collection collection, User owner, Media ownerAvatar, Media cover) {
         return new CollectionResponse(
                 collection.getId(),
                 owner.getId(),

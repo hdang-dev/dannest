@@ -8,8 +8,7 @@ import java.util.UUID;
 /** One image on a post: the media id, its URL, display crop, and position in the post. */
 public record PostMediaResponse(UUID mediaId, String url, CropDto crop, int displayOrder) {
 
-    public static PostMediaResponse from(PostMedia postMedia) {
-        Media media = postMedia.getMedia();
+    public static PostMediaResponse from(PostMedia postMedia, Media media) {
         return new PostMediaResponse(
                 media.getId(), media.getUrl(), CropDto.from(media.getCrop()), postMedia.getDisplayOrder());
     }

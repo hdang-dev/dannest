@@ -12,14 +12,12 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-/**
- * An event the recipient should be told about. Denormalized on write from the {@code
- * DannestEvent} that created it — no foreign keys, no joins back to Core's database.
- */
 @Entity
 @Table(name = "notifications")
 @Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -60,7 +58,6 @@ public class Notification extends BaseEntity {
         return readAt != null;
     }
 
-    /** Mark read (idempotent). */
     public void markRead() {
         if (readAt == null) {
             readAt = Instant.now();

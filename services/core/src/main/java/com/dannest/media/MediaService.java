@@ -4,8 +4,6 @@ import com.dannest.common.BadRequestException;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.media.dto.MediaResponse;
-import com.dannest.user.User;
-import com.dannest.user.UserRepository;
 import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
@@ -38,7 +36,6 @@ public class MediaService {
     private final S3Client s3;
     private final R2Properties props;
     private final MediaRepository mediaRepository;
-    private final UserRepository userRepository;
 
     /** Upload the (original) image bytes to R2 with an optional display crop. */
     public MediaResponse upload(UUID userId, MultipartFile file, ImageCrop crop) {
@@ -64,9 +61,8 @@ public class MediaService {
                 toRequestBody(file));
 
         String url = props.publicBaseUrl() + "/" + key;
-        User owner = userRepository.getReferenceById(userId);
         Media media = Media.builder()
-                .owner(owner)
+                .ownerId(userId)
                 .source(MediaSource.UPLOAD)
                 .storageKey(key)
                 .url(url)
@@ -84,8 +80,7 @@ public class MediaService {
         if (url == null || url.isBlank()) {
             throw new BadRequestException("No URL provided");
         }
-        User owner = userRepository.getReferenceById(userId);
-        Media media = Media.external(owner, url.trim());
+        Media media = Media.external(userId, url.trim());
         if (crop != null) {
             media.setCrop(crop);
         }
@@ -119,7 +114,7 @@ public class MediaService {
         Media media = mediaRepository
                 .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
-        if (!media.getOwner().getId().equals(userId)) {
+        if (!media.getOwnerId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");
         }
         return media;

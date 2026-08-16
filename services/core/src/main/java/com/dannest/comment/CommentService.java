@@ -1,6 +1,7 @@
 package com.dannest.comment;
 
 import com.dannest.collection.Collection;
+import com.dannest.collection.CollectionRepository;
 import com.dannest.collection.Visibility;
 import com.dannest.comment.dto.CommentResponse;
 import com.dannest.comment.dto.CreateCommentRequest;
@@ -10,6 +11,7 @@ import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.media.Media;
+import com.dannest.media.MediaRepository;
 import com.dannest.media.dto.CropDto;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
@@ -17,7 +19,13 @@ import com.dannest.post.Post;
 import com.dannest.post.PostRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -39,7 +47,9 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
+    private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
+    private final MediaRepository mediaRepository;
     private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
@@ -49,8 +59,10 @@ public class CommentService {
                 ? pageable
                 : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                         Sort.by(Sort.Direction.ASC, "createdAt"));
-        Page<Comment> page = commentRepository.findByPostId(postId, effective);
-        return PagedResponse.of(page, CommentService::toResponse);
+        Page<Comment> page = commentRepository.findByPostIdAndDeletedAtIsNull(postId, effective);
+        return new PagedResponse<>(
+                toResponses(page.getContent()), page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
 
     public CommentResponse create(UUID userId, UUID postId, CreateCommentRequest request) {
@@ -62,22 +74,21 @@ public class CommentService {
                     .findByIdAndDeletedAtIsNull(request.parentCommentId())
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Comment not found: " + request.parentCommentId()));
-            if (!parent.getPost().getId().equals(postId)) {
+            if (!parent.getPostId().equals(postId)) {
                 throw new BadRequestException("Parent comment does not belong to this post");
             }
         }
 
-        User author = userRepository.getReferenceById(userId);
         Comment comment = commentRepository.save(Comment.builder()
-                .post(post)
-                .author(author)
-                .parent(parent)
+                .postId(postId)
+                .authorId(userId)
+                .parentCommentId(parent != null ? parent.getId() : null)
                 .content(request.content().trim())
                 .build());
         if (parent != null) {
             notificationService.notify(
-                    parent.getAuthor().getId(), userId, NotificationType.COMMENT_REPLY,
-                    post.getCollection().getId(), postId, comment.getId());
+                    parent.getAuthorId(), userId, NotificationType.COMMENT_REPLY,
+                    post.getCollectionId(), postId, comment.getId());
         }
         return toResponse(comment);
     }
@@ -96,28 +107,54 @@ public class CommentService {
 
     private void softDeleteWithReplies(Comment comment) {
         comment.softDelete();
-        for (Comment reply : commentRepository.findByParent_IdAndDeletedAtIsNull(comment.getId())) {
+        for (Comment reply : commentRepository.findByParentCommentIdAndDeletedAtIsNull(comment.getId())) {
             softDeleteWithReplies(reply);
         }
     }
 
     // ----- mapping -------------------------------------------------------------------
 
-    private static CommentResponse toResponse(Comment c) {
-        User a = c.getAuthor();
-        Media avatar = a.getAvatar();
-        Comment parent = c.getParent();
-        return new CommentResponse(
-                c.getId(),
-                c.getPost().getId(),
-                a.getId(),
-                a.getUsername(),
-                avatar != null ? avatar.getUrl() : null,
-                avatar != null ? CropDto.from(avatar.getCrop()) : null,
-                parent != null ? parent.getId() : null,
-                c.getContent(),
-                c.getCreatedAt(),
-                c.getUpdatedAt());
+    private CommentResponse toResponse(Comment c) {
+        return toResponses(List.of(c)).get(0);
+    }
+
+    /**
+     * Map a batch of comments to responses, batching the author/avatar lookups into a
+     * couple of grouped queries rather than several per comment.
+     */
+    private List<CommentResponse> toResponses(List<Comment> comments) {
+        if (comments.isEmpty()) {
+            return List.of();
+        }
+        Set<UUID> authorIds = comments.stream().map(Comment::getAuthorId).collect(Collectors.toSet());
+        Map<UUID, User> authorsById = new LinkedHashMap<>();
+        for (User u : userRepository.findAllById(authorIds)) {
+            authorsById.put(u.getId(), u);
+        }
+        Set<UUID> avatarIds = authorsById.values().stream()
+                .map(User::getAvatarMediaId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Media> avatarsById = new LinkedHashMap<>();
+        for (Media m : mediaRepository.findAllById(avatarIds)) {
+            avatarsById.put(m.getId(), m);
+        }
+
+        return comments.stream()
+                .map(c -> {
+                    User a = authorsById.get(c.getAuthorId());
+                    Media avatar = a.getAvatarMediaId() != null ? avatarsById.get(a.getAvatarMediaId()) : null;
+                    return new CommentResponse(
+                            c.getId(),
+                            c.getPostId(),
+                            a.getId(),
+                            a.getUsername(),
+                            avatar != null ? avatar.getUrl() : null,
+                            avatar != null ? CropDto.from(avatar.getCrop()) : null,
+                            c.getParentCommentId(),
+                            c.getContent(),
+                            c.getCreatedAt(),
+                            c.getUpdatedAt());
+                })
+                .toList();
     }
 
     // ----- helpers -------------------------------------------------------------------
@@ -127,8 +164,10 @@ public class CommentService {
         Post post = postRepository
                 .findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found: " + postId));
-        Collection c = post.getCollection();
-        boolean owned = c.getOwner().getId().equals(userId) || post.getAuthor().getId().equals(userId);
+        Collection c = collectionRepository
+                .findById(post.getCollectionId())
+                .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + post.getCollectionId()));
+        boolean owned = c.getOwnerId().equals(userId) || post.getAuthorId().equals(userId);
         if (c.getVisibility() == Visibility.PRIVATE && !owned) {
             // Hide the existence of posts in private collections from non-owners.
             throw new ResourceNotFoundException("Post not found: " + postId);
@@ -141,7 +180,7 @@ public class CommentService {
         Comment comment = commentRepository
                 .findByIdAndDeletedAtIsNull(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comment not found: " + commentId));
-        if (!comment.getAuthor().getId().equals(userId)) {
+        if (!comment.getAuthorId().equals(userId)) {
             throw new ForbiddenException("You do not own this comment");
         }
         return comment;

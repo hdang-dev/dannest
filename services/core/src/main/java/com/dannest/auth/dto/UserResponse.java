@@ -12,8 +12,7 @@ import java.util.UUID;
  */
 public record UserResponse(UUID id, String username, String email, String avatarUrl, CropDto avatarCrop) {
 
-    public static UserResponse from(User user) {
-        Media avatar = user.getAvatar();
+    public static UserResponse from(User user, Media avatar) {
         return new UserResponse(
                 user.getId(),
                 user.getUsername(),

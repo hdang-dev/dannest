@@ -27,11 +27,10 @@ public record UserProfileResponse(
         Instant updatedAt) {
 
     /**
-     * Map an entity to its response. Must run inside a transaction (touches lazy fields).
+     * Map an entity to its response. Caller resolves the avatar {@link Media} (if any).
      * {@code includeEmail} should only be true when the caller is viewing their own profile.
      */
-    public static UserProfileResponse from(User user, boolean includeEmail) {
-        Media avatar = user.getAvatar();
+    public static UserProfileResponse from(User user, Media avatar, boolean includeEmail) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getUsername(),

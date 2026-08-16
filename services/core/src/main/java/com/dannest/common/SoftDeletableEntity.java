@@ -5,10 +5,6 @@ import jakarta.persistence.MappedSuperclass;
 import java.time.Instant;
 import lombok.Getter;
 
-/**
- * Base for entities that support soft-delete: {@code deletedAt} set means hidden (not
- * gone) — the row stays for referential integrity and is recoverable via {@link #restore()}.
- */
 @Getter
 @MappedSuperclass
 public abstract class SoftDeletableEntity extends BaseEntity {
@@ -20,14 +16,12 @@ public abstract class SoftDeletableEntity extends BaseEntity {
         return deletedAt != null;
     }
 
-    /** Soft-delete (idempotent). */
     public void softDelete() {
         if (deletedAt == null) {
             deletedAt = Instant.now();
         }
     }
 
-    /** Restore a previously soft-deleted row. */
     public void restore() {
         deletedAt = null;
     }

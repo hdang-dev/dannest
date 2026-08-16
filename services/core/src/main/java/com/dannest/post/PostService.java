@@ -21,11 +21,14 @@ import com.dannest.post.dto.PostResponse;
 import com.dannest.post.dto.UpdatePostRequest;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -39,10 +42,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The full lifecycle of a post: create (with ordered images), read (single + feed /
- * mine / by-collection lists), partial update, delete, and like / unlike. Mutations are
- * scoped to the caller — only a post's author may edit or delete it, and posts can only
- * be created in (or moved to) a collection the caller owns. Visibility is inherited from
+ * The full lifecycle of a post: create (with ordered images), read (single +
+ * feed /
+ * mine / by-collection lists), partial update, delete, and like / unlike.
+ * Mutations are
+ * scoped to the caller — only a post's author may edit or delete it, and posts
+ * can only
+ * be created in (or moved to) a collection the caller owns. Visibility is
+ * inherited from
  * the owning collection.
  */
 @Service
@@ -62,11 +69,10 @@ public class PostService {
 
     public PostResponse create(UUID userId, CreatePostRequest request) {
         Collection collection = resolveOwnedCollection(userId, request.collectionId());
-        User author = userRepository.getReferenceById(userId);
 
         Post post = postRepository.save(Post.builder()
-                .collection(collection)
-                .author(author)
+                .collectionId(collection.getId())
+                .authorId(userId)
                 .title(request.title().trim())
                 .content(trimToNull(request.content()))
                 .build());
@@ -77,7 +83,7 @@ public class PostService {
 
     /** Tell everyone following this collection that it has a new post. */
     private void notifyFollowers(UUID authorId, Collection collection, Post post) {
-        for (UUID followerId : collectionFollowRepository.findFollowerIdsByCollectionId(collection.getId())) {
+        for (UUID followerId : collectionFollowRepository.findFollowerIdByCollectionId(collection.getId())) {
             notificationService.notify(
                     followerId, authorId, NotificationType.NEW_POST, collection.getId(), post.getId(), null);
         }
@@ -86,9 +92,11 @@ public class PostService {
     /**
      * List posts with filters:
      * <ul>
-     *   <li>{@code collectionId} set — posts in that collection (if the caller may view it); scope is ignored</li>
-     *   <li>{@code scope=FEED} — posts in every user's public, non-archived collections</li>
-     *   <li>{@code scope=MINE} — posts the caller authored</li>
+     * <li>{@code collectionId} set — posts in that collection (if the caller may
+     * view it); scope is ignored</li>
+     * <li>{@code scope=FEED} — posts in every user's public, non-archived
+     * collections</li>
+     * <li>{@code scope=MINE} — posts the caller authored</li>
      * </ul>
      * {@code q} narrows by title. Newest-first unless the request specifies a sort.
      */
@@ -105,13 +113,19 @@ public class PostService {
         if (collectionId != null) {
             // Access is decided by the collection's visibility, then we simply scope to it.
             requireVisibleCollection(userId, collectionId);
-            filters.add((root, cq, cb) -> cb.equal(root.get("collection").get("id"), collectionId));
+            filters.add((root, cq, cb) -> cb.equal(root.get("collectionId"), collectionId));
         } else if (scope == PostScope.MINE) {
-            filters.add((root, cq, cb) -> cb.equal(root.get("author").get("id"), userId));
+            filters.add((root, cq, cb) -> cb.equal(root.get("authorId"), userId));
         } else {
-            // FEED: public, non-archived collections only.
-            filters.add((root, cq, cb) -> cb.equal(root.get("collection").get("visibility"), Visibility.PUBLIC));
-            filters.add((root, cq, cb) -> cb.isNull(root.get("collection").get("archivedAt")));
+            // FEED: public, non-archived collections only — via a subquery, since Post
+            // no longer holds a mapped association to Collection to join through.
+            filters.add((root, cq, cb) -> {
+                Subquery<UUID> sub = cq.subquery(UUID.class);
+                Root<Collection> c = sub.from(Collection.class);
+                sub.select(c.get("id"))
+                        .where(cb.equal(c.get("visibility"), Visibility.PUBLIC), cb.isNull(c.get("archivedAt")));
+                return root.get("collectionId").in(sub);
+            });
         }
         if (q != null) {
             String like = "%" + q.toLowerCase() + "%";
@@ -135,7 +149,7 @@ public class PostService {
         Post post = findOwned(userId, postId);
 
         if (request.collectionId() != null) {
-            post.setCollection(resolveOwnedCollection(userId, request.collectionId()));
+            post.setCollectionId(resolveOwnedCollection(userId, request.collectionId()).getId());
         }
         if (request.title() != null) {
             String title = request.title().trim();
@@ -149,14 +163,17 @@ public class PostService {
         }
         // Providing mediaIds replaces the post's images wholesale.
         if (request.mediaIds() != null) {
-            postMediaRepository.deleteByPost_Id(post.getId());
+            postMediaRepository.deleteByPostId(post.getId());
             postMediaRepository.flush();
             attachMedia(userId, post, request.mediaIds());
         }
         return toResponse(post, userId);
     }
 
-    /** Soft-delete a post — hidden from feeds/lookups but recoverable; images, likes, and comments stay put. */
+    /**
+     * Soft-delete a post — hidden from feeds/lookups but recoverable; images,
+     * likes, and comments stay put.
+     */
     public void delete(UUID userId, UUID postId) {
         Post post = findOwned(userId, postId);
         post.softDelete();
@@ -165,10 +182,10 @@ public class PostService {
     /** Like a post the caller can view (idempotent — a second like is a no-op). */
     public void like(UUID userId, UUID postId) {
         Post post = findVisible(userId, postId);
-        if (!postLikeRepository.existsByPost_IdAndUser_Id(postId, userId)) {
+        if (!postLikeRepository.existsByPostIdAndUserId(postId, userId)) {
             postLikeRepository.save(PostLike.builder()
-                    .post(post)
-                    .user(userRepository.getReferenceById(userId))
+                    .postId(post.getId())
+                    .userId(userId)
                     .build());
         }
     }
@@ -176,18 +193,21 @@ public class PostService {
     /** Remove the caller's like (idempotent). */
     public void unlike(UUID userId, UUID postId) {
         findVisible(userId, postId);
-        postLikeRepository.deleteByPost_IdAndUser_Id(postId, userId);
+        postLikeRepository.deleteByPostIdAndUserId(postId, userId);
     }
 
-    // ----- mapping -------------------------------------------------------------------
+    // ----- mapping
+    // -------------------------------------------------------------------
 
     private PostResponse toResponse(Post post, UUID userId) {
         return toResponses(List.of(post), userId).get(0);
     }
 
     /**
-     * Map a page of posts to responses, batching the images and social counts into a
-     * handful of grouped queries rather than several per post.
+     * Map a page of posts to responses, batching the images, social counts, and the
+     * collection/author/avatar lookups into a handful of grouped queries rather
+     * than
+     * several per post.
      */
     private List<PostResponse> toResponses(List<Post> posts, UUID userId) {
         if (posts.isEmpty()) {
@@ -195,21 +215,34 @@ public class PostService {
         }
         List<UUID> ids = posts.stream().map(Post::getId).toList();
 
+        List<PostMedia> postMediaRows = postMediaRepository.findByPostIdInOrderByDisplayOrder(ids);
+        Set<UUID> imageMediaIds = postMediaRows.stream().map(PostMedia::getMediaId).collect(Collectors.toSet());
+        Map<UUID, Media> imageMediaById = toMap(mediaRepository.findAllById(imageMediaIds), Media::getId);
         Map<UUID, List<PostMediaResponse>> imagesByPost = new LinkedHashMap<>();
-        for (PostMedia pm : postMediaRepository.findWithMediaByPostIds(ids)) {
+        for (PostMedia pm : postMediaRows) {
             imagesByPost
-                    .computeIfAbsent(pm.getPost().getId(), k -> new ArrayList<>())
-                    .add(PostMediaResponse.from(pm));
+                    .computeIfAbsent(pm.getPostId(), k -> new ArrayList<>())
+                    .add(PostMediaResponse.from(pm, imageMediaById.get(pm.getMediaId())));
         }
+
         Map<UUID, Long> likeCounts = toCountMap(postLikeRepository.countByPostIds(ids));
         Map<UUID, Long> commentCounts = toCountMap(commentRepository.countByPostIds(ids));
         Set<UUID> likedByMe = new HashSet<>(postLikeRepository.findLikedPostIds(userId, ids));
 
+        Set<UUID> collectionIds = posts.stream().map(Post::getCollectionId).collect(Collectors.toSet());
+        Map<UUID, Collection> collectionsById = toMap(collectionRepository.findAllById(collectionIds),
+                Collection::getId);
+        Set<UUID> authorIds = posts.stream().map(Post::getAuthorId).collect(Collectors.toSet());
+        Map<UUID, User> authorsById = toMap(userRepository.findAllById(authorIds), User::getId);
+        Set<UUID> avatarIds = authorsById.values().stream()
+                .map(User::getAvatarMediaId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<UUID, Media> avatarsById = toMap(mediaRepository.findAllById(avatarIds), Media::getId);
+
         return posts.stream()
                 .map(p -> {
-                    Collection c = p.getCollection();
-                    User a = p.getAuthor();
-                    Media authorAvatar = a.getAvatar();
+                    Collection c = collectionsById.get(p.getCollectionId());
+                    User a = authorsById.get(p.getAuthorId());
+                    Media authorAvatar = a.getAvatarMediaId() != null ? avatarsById.get(a.getAvatarMediaId()) : null;
                     return new PostResponse(
                             p.getId(),
                             c.getId(),
@@ -235,9 +268,21 @@ public class PostService {
         return counts.stream().collect(Collectors.toMap(AggregateCount::getId, AggregateCount::getCount));
     }
 
-    // ----- helpers -------------------------------------------------------------------
+    private static <T> Map<UUID, T> toMap(Iterable<T> entities, java.util.function.Function<T, UUID> idFn) {
+        Map<UUID, T> map = new LinkedHashMap<>();
+        for (T entity : entities) {
+            map.put(idFn.apply(entity), entity);
+        }
+        return map;
+    }
 
-    /** Resolve the mediaIds (owned by the caller) into ordered {@link PostMedia} rows. */
+    // ----- helpers
+    // -------------------------------------------------------------------
+
+    /**
+     * Resolve the mediaIds (owned by the caller) into ordered {@link PostMedia}
+     * rows.
+     */
     private void attachMedia(UUID userId, Post post, List<UUID> mediaIds) {
         if (mediaIds == null) {
             return;
@@ -250,18 +295,23 @@ public class PostService {
             }
             Media media = resolveOwnedMedia(userId, mediaId);
             postMediaRepository.save(PostMedia.builder()
-                    .post(post)
-                    .media(media)
+                    .postId(post.getId())
+                    .mediaId(media.getId())
                     .displayOrder(order++)
                     .build());
         }
     }
 
-    /** Load a post the caller may view: its collection is PUBLIC, or the caller owns it / authored the post. */
+    /**
+     * Load a post the caller may view: its collection is PUBLIC, or the caller owns
+     * it / authored the post.
+     */
     private Post findVisible(UUID userId, UUID postId) {
         Post post = findById(postId);
-        Collection c = post.getCollection();
-        boolean owned = c.getOwner().getId().equals(userId) || post.getAuthor().getId().equals(userId);
+        Collection c = collectionRepository
+                .findById(post.getCollectionId())
+                .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + post.getCollectionId()));
+        boolean owned = c.getOwnerId().equals(userId) || post.getAuthorId().equals(userId);
         if (c.getVisibility() == Visibility.PRIVATE && !owned) {
             // Hide the existence of posts in private collections from non-owners.
             throw new ResourceNotFoundException("Post not found: " + postId);
@@ -269,10 +319,13 @@ public class PostService {
         return post;
     }
 
-    /** Load a post the caller must have authored to mutate; 404 if missing, 403 if not theirs. */
+    /**
+     * Load a post the caller must have authored to mutate; 404 if missing, 403 if
+     * not theirs.
+     */
     private Post findOwned(UUID userId, UUID postId) {
         Post post = findById(postId);
-        if (!post.getAuthor().getId().equals(userId)) {
+        if (!post.getAuthorId().equals(userId)) {
             throw new ForbiddenException("You do not own this post");
         }
         return post;
@@ -288,18 +341,21 @@ public class PostService {
         Collection collection = collectionRepository
                 .findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
-        if (!collection.getOwner().getId().equals(userId)) {
+        if (!collection.getOwnerId().equals(userId)) {
             throw new ForbiddenException("You can only post to a collection you own");
         }
         return collection;
     }
 
-    /** Ensure the caller may view a collection (for its post list); 404 if private and not theirs. */
+    /**
+     * Ensure the caller may view a collection (for its post list); 404 if private
+     * and not theirs.
+     */
     private void requireVisibleCollection(UUID userId, UUID collectionId) {
         Collection collection = collectionRepository
                 .findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
-        boolean owned = collection.getOwner().getId().equals(userId);
+        boolean owned = collection.getOwnerId().equals(userId);
         if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
             throw new ResourceNotFoundException("Collection not found: " + collectionId);
         }
@@ -309,7 +365,7 @@ public class PostService {
         Media media = mediaRepository
                 .findByIdAndDeletedAtIsNull(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
-        if (!media.getOwner().getId().equals(userId)) {
+        if (!media.getOwnerId().equals(userId)) {
             throw new ForbiddenException("You do not own this media");
         }
         return media;

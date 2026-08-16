@@ -13,12 +13,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/**
- * Shared base for every entity: a UUID primary key and audit timestamps.
- *
- * The timestamps are filled automatically by Spring Data JPA auditing
- * (enabled in {@link com.dannest.config.JpaConfig}) — you never set them by hand.
- */
 @Getter
 @MappedSuperclass
 @EntityListeners(AuditingEntityListener.class)

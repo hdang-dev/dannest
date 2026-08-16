@@ -2,13 +2,17 @@ package com.dannest.follow;
 
 import com.dannest.collection.Collection;
 import com.dannest.collection.CollectionRepository;
+import com.dannest.collection.CollectionService;
 import com.dannest.collection.Visibility;
 import com.dannest.collection.dto.CollectionResponse;
 import com.dannest.common.BadRequestException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
-import com.dannest.user.UserRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,27 +32,27 @@ public class FollowService {
 
     private final CollectionFollowRepository followRepository;
     private final CollectionRepository collectionRepository;
-    private final UserRepository userRepository;
+    private final CollectionService collectionService;
 
     /** Follow a collection the caller may view and doesn't own; idempotent. */
     public void follow(UUID userId, UUID collectionId) {
         Collection collection = findFollowable(userId, collectionId);
-        if (!followRepository.existsByFollower_IdAndCollection_Id(userId, collectionId)) {
+        if (!followRepository.existsByFollowerIdAndCollectionId(userId, collectionId)) {
             followRepository.save(CollectionFollow.builder()
-                    .follower(userRepository.getReferenceById(userId))
-                    .collection(collection)
+                    .followerId(userId)
+                    .collectionId(collection.getId())
                     .build());
         }
     }
 
     /** Unfollow a collection; idempotent. */
     public void unfollow(UUID userId, UUID collectionId) {
-        followRepository.deleteByFollower_IdAndCollection_Id(userId, collectionId);
+        followRepository.deleteByFollowerIdAndCollectionId(userId, collectionId);
     }
 
     @Transactional(readOnly = true)
     public boolean isFollowing(UUID userId, UUID collectionId) {
-        return followRepository.existsByFollower_IdAndCollection_Id(userId, collectionId);
+        return followRepository.existsByFollowerIdAndCollectionId(userId, collectionId);
     }
 
     /** The caller's followed collections, most recently followed first unless sorted otherwise. */
@@ -59,7 +63,19 @@ public class FollowService {
                 : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                         Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<CollectionFollow> page = followRepository.findByFollowerId(userId, effective);
-        return PagedResponse.of(page, f -> CollectionResponse.from(f.getCollection()));
+
+        List<UUID> collectionIds = page.getContent().stream().map(CollectionFollow::getCollectionId).toList();
+        Map<UUID, Collection> collectionsById = collectionRepository.findAllById(collectionIds).stream()
+                .collect(Collectors.toMap(Collection::getId, c -> c));
+        // Preserve the page's follow order (findAllById does not guarantee it).
+        List<Collection> ordered = collectionIds.stream()
+                .map(collectionsById::get)
+                .filter(Objects::nonNull)
+                .toList();
+
+        return new PagedResponse<>(
+                collectionService.toResponses(ordered), page.getNumber(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
 
     /** Load a collection the caller may follow: visible to them, and not their own. */
@@ -67,7 +83,7 @@ public class FollowService {
         Collection collection = collectionRepository
                 .findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
-        boolean owned = collection.getOwner().getId().equals(userId);
+        boolean owned = collection.getOwnerId().equals(userId);
         if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
             // Hide the existence of private collections from non-owners.
             throw new ResourceNotFoundException("Collection not found: " + collectionId);

@@ -3,6 +3,8 @@ package com.dannest.auth;
 import com.dannest.auth.dto.AuthResponse;
 import com.dannest.auth.dto.GoogleLoginRequest;
 import com.dannest.auth.dto.UserResponse;
+import com.dannest.media.Media;
+import com.dannest.media.MediaRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,6 +29,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserRepository userRepository;
+    private final MediaRepository mediaRepository;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
 
@@ -38,6 +41,7 @@ public class AuthController {
     public AuthController(
             AuthService authService,
             UserRepository userRepository,
+            MediaRepository mediaRepository,
             JwtService jwtService,
             RefreshTokenService refreshTokenService,
             @Value("${jwt.refresh-cookie.name}") String cookieName,
@@ -46,6 +50,7 @@ public class AuthController {
             @Value("${jwt.refresh-token-expiration-seconds}") long refreshTtlSeconds) {
         this.authService = authService;
         this.userRepository = userRepository;
+        this.mediaRepository = mediaRepository;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
         this.cookieName = cookieName;
@@ -78,7 +83,7 @@ public class AuthController {
                 .orElseThrow(() -> new InvalidTokenException("User not found"));
         setRefreshCookie(response, rotated.token());
         String accessToken = jwtService.createAccessToken(user);
-        return new AuthResponse(accessToken, UserResponse.from(user));
+        return new AuthResponse(accessToken, toUserResponse(user));
     }
 
     /** Revokes the refresh token (Redis) and clears the cookie. Never fails just
@@ -100,14 +105,21 @@ public class AuthController {
         UUID id = UUID.fromString(jwt.getSubject());
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new InvalidTokenException("User not found"));
-        return UserResponse.from(user);
+        return toUserResponse(user);
     }
 
     private AuthResponse issueSession(User user, HttpServletResponse response) {
         String accessToken = jwtService.createAccessToken(user);
         String refreshToken = refreshTokenService.issue(user.getId());
         setRefreshCookie(response, refreshToken);
-        return new AuthResponse(accessToken, UserResponse.from(user));
+        return new AuthResponse(accessToken, toUserResponse(user));
+    }
+
+    private UserResponse toUserResponse(User user) {
+        Media avatar = user.getAvatarMediaId() != null
+                ? mediaRepository.findById(user.getAvatarMediaId()).orElse(null)
+                : null;
+        return UserResponse.from(user, avatar);
     }
 
     private void setRefreshCookie(HttpServletResponse response, String token) {
