@@ -11,7 +11,7 @@ import jakarta.validation.constraints.NotNull;
  * the media up itself, since it no longer shares a database with services/media.
  */
 public record PostImageInput(
-        @NotNull java.util.UUID mediaId,
+        @NotNull String mediaId,
         @NotBlank String url,
         CropDto crop) {
 }

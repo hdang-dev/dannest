@@ -20,7 +20,7 @@ public record UserProfileResponse(
         String username,
         String email,
         String bio,
-        UUID avatarMediaId,
+        String avatarMediaId,
         String avatarUrl,
         CropDto avatarCrop,
         Instant createdAt,

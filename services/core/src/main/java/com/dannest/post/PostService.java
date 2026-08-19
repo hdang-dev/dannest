@@ -278,7 +278,7 @@ public class PostService {
             return;
         }
         int order = 0;
-        Set<UUID> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>();
         for (PostImageInput image : images) {
             if (image == null || image.mediaId() == null || !seen.add(image.mediaId())) {
                 continue; // ignore nulls and duplicates (the (post, media) pair is unique)

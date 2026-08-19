@@ -33,9 +33,10 @@ public class User extends BaseEntity {
     @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
-    /** Opaque reference into services/media — no FK, that service owns the asset's lifecycle. */
+    /** Opaque reference into services/media (a Mongo ObjectId, not a UUID) — no FK,
+     * that service owns the asset's lifecycle. */
     @Column(name = "avatar_media_id")
-    private UUID avatarMediaId;
+    private String avatarMediaId;
 
     /** Denormalized snapshot of the media service's url/crop, copied at write time
      * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */

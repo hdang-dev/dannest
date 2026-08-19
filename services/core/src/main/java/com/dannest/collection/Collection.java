@@ -36,9 +36,10 @@ public class Collection extends BaseEntity {
     @Column(columnDefinition = "text")
     private String description;
 
-    /** Opaque reference into services/media — no FK, that service owns the asset's lifecycle. */
+    /** Opaque reference into services/media (a Mongo ObjectId, not a UUID) — no FK,
+     * that service owns the asset's lifecycle. */
     @Column(name = "cover_media_id")
-    private UUID coverMediaId;
+    private String coverMediaId;
 
     /** Denormalized snapshot of the media service's url/crop, copied at write time
      * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */

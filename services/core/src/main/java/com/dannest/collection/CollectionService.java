@@ -202,7 +202,7 @@ public class CollectionService {
 
     /** Stores the cover reference plus the url/crop snapshot the caller sent (services/media
      * already enforced ownership when it issued that media id — see media-split notes). */
-    private void applyCover(Collection collection, UUID mediaId, String url, com.dannest.common.CropDto crop) {
+    private void applyCover(Collection collection, String mediaId, String url, com.dannest.common.CropDto crop) {
         if (url == null || url.isBlank()) {
             throw new BadRequestException("coverUrl is required when setting coverMediaId");
         }

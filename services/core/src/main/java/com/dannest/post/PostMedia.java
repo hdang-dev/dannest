@@ -29,9 +29,10 @@ public class PostMedia extends BaseEntity {
     @Column(name = "post_id", nullable = false)
     private UUID postId;
 
-    /** Opaque reference into services/media — no FK, that service owns the asset's lifecycle. */
+    /** Opaque reference into services/media (a Mongo ObjectId, not a UUID) — no FK,
+     * that service owns the asset's lifecycle. */
     @Column(name = "media_id", nullable = false)
-    private UUID mediaId;
+    private String mediaId;
 
     /** Denormalized snapshot of the media service's url/crop, copied at write time
      * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */

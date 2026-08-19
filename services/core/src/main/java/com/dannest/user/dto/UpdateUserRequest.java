@@ -2,7 +2,6 @@ package com.dannest.user.dto;
 
 import com.dannest.common.CropDto;
 import jakarta.validation.constraints.Size;
-import java.util.UUID;
 
 /**
  * Body of PATCH /api/v1/users/me — a partial update.
@@ -15,7 +14,7 @@ import java.util.UUID;
 public record UpdateUserRequest(
         @Size(max = 50) String username,
         String bio,
-        UUID avatarMediaId,
+        String avatarMediaId,
         String avatarMediaUrl,
         CropDto avatarCrop,
         Boolean clearAvatar) {

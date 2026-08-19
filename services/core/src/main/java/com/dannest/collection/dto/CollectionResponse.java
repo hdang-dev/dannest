@@ -22,7 +22,7 @@ public record CollectionResponse(
         String name,
         String description,
         Visibility visibility,
-        UUID coverMediaId,
+        String coverMediaId,
         String coverUrl,
         CropDto coverCrop,
         Instant archivedAt,

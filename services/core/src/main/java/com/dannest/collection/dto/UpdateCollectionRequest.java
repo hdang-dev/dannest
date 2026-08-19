@@ -3,7 +3,6 @@ package com.dannest.collection.dto;
 import com.dannest.collection.Visibility;
 import com.dannest.common.CropDto;
 import jakarta.validation.constraints.Size;
-import java.util.UUID;
 
 /**
  * Body of PATCH /api/v1/collections/{id} — a partial update.
@@ -16,7 +15,7 @@ public record UpdateCollectionRequest(
         @Size(max = 120) String name,
         String description,
         Visibility visibility,
-        UUID coverMediaId,
+        String coverMediaId,
         String coverUrl,
         CropDto coverCrop,
         Boolean clearCover) {
