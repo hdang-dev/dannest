@@ -177,6 +177,8 @@ export default function ProfilePage() {
     setError(null);
 
     let avatarMediaId: string | undefined;
+    let avatarMediaUrl: string | undefined;
+    let avatarCrop: Crop | undefined;
     let clearAvatar: boolean | undefined;
     try {
       if (pendingAvatar) {
@@ -186,11 +188,18 @@ export default function ProfilePage() {
           const webp = await fileToWebp(pendingAvatar.file);
           const media = await uploadMedia(webp, pendingAvatar.crop, "avatar.webp");
           avatarMediaId = media.id;
+          avatarMediaUrl = media.url;
+          avatarCrop = media.crop;
         } else if (pendingAvatar.kind === "url") {
           const media = await createExternalMedia(pendingAvatar.url, pendingAvatar.crop);
           avatarMediaId = media.id;
+          avatarMediaUrl = media.url;
+          avatarCrop = media.crop;
         } else {
-          await updateMediaCrop(pendingAvatar.mediaId, pendingAvatar.crop);
+          const media = await updateMediaCrop(pendingAvatar.mediaId, pendingAvatar.crop);
+          avatarMediaId = pendingAvatar.mediaId;
+          avatarMediaUrl = media.url;
+          avatarCrop = media.crop;
         }
       }
     } catch {
@@ -204,6 +213,8 @@ export default function ProfilePage() {
         username: username !== profile.username ? username : undefined,
         bio: draftBio !== (profile.bio ?? "") ? draftBio : undefined,
         avatarMediaId,
+        avatarMediaUrl,
+        avatarCrop,
         clearAvatar,
       });
       setProfile(updated);

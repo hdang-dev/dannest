@@ -120,12 +120,20 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
           const webp = await fileToWebp(editing.file);
           const media = await uploadMedia(webp, pendingCrop);
           payload.coverMediaId = media.id;
+          payload.coverUrl = media.url;
+          payload.coverCrop = media.crop;
         } else if (editing.kind === "url") {
           const media = await createExternalMedia(editing.url, pendingCrop);
           payload.coverMediaId = media.id;
+          payload.coverUrl = media.url;
+          payload.coverCrop = media.crop;
         } else {
-          // Re-cropped an existing cover — just update its crop; cover id is unchanged.
-          await updateMediaCrop(editing.mediaId, pendingCrop);
+          // Re-cropped an existing cover — id is unchanged, but Core's denormalized
+          // snapshot needs the fresh crop (and whatever url Media returns for it).
+          const media = await updateMediaCrop(editing.mediaId, pendingCrop);
+          payload.coverMediaId = editing.mediaId;
+          payload.coverUrl = media.url;
+          payload.coverCrop = media.crop;
         }
       } else if (coverCleared) {
         payload.clearCover = true;

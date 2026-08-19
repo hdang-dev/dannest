@@ -7,12 +7,10 @@ import com.dannest.comment.dto.CommentResponse;
 import com.dannest.comment.dto.CreateCommentRequest;
 import com.dannest.comment.dto.UpdateCommentRequest;
 import com.dannest.common.BadRequestException;
+import com.dannest.common.CropDto;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
-import com.dannest.media.Media;
-import com.dannest.media.MediaRepository;
-import com.dannest.media.dto.CropDto;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.Post;
@@ -22,7 +20,6 @@ import com.dannest.user.UserRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -49,7 +46,6 @@ public class CommentService {
     private final PostRepository postRepository;
     private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
-    private final MediaRepository mediaRepository;
     private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
@@ -119,8 +115,9 @@ public class CommentService {
     }
 
     /**
-     * Map a batch of comments to responses, batching the author/avatar lookups into a
-     * couple of grouped queries rather than several per comment.
+     * Map a batch of comments to responses, batching the author lookup into a single
+     * grouped query rather than one per comment. Author avatars are the author's own
+     * denormalized snapshot — no media lookup needed.
      */
     private List<CommentResponse> toResponses(List<Comment> comments) {
         if (comments.isEmpty()) {
@@ -131,24 +128,17 @@ public class CommentService {
         for (User u : userRepository.findAllById(authorIds)) {
             authorsById.put(u.getId(), u);
         }
-        Set<UUID> avatarIds = authorsById.values().stream()
-                .map(User::getAvatarMediaId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<UUID, Media> avatarsById = new LinkedHashMap<>();
-        for (Media m : mediaRepository.findAllById(avatarIds)) {
-            avatarsById.put(m.getId(), m);
-        }
 
         return comments.stream()
                 .map(c -> {
                     User a = authorsById.get(c.getAuthorId());
-                    Media avatar = a.getAvatarMediaId() != null ? avatarsById.get(a.getAvatarMediaId()) : null;
                     return new CommentResponse(
                             c.getId(),
                             c.getPostId(),
                             a.getId(),
                             a.getUsername(),
-                            avatar != null ? avatar.getUrl() : null,
-                            avatar != null ? CropDto.from(avatar.getCrop()) : null,
+                            a.getAvatarMediaUrl(),
+                            a.getAvatarMediaUrl() != null ? CropDto.from(a.getAvatarCrop()) : null,
                             c.getParentCommentId(),
                             c.getContent(),
                             c.getCreatedAt(),

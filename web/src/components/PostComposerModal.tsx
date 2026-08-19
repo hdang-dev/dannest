@@ -224,28 +224,31 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
     setSaving(true);
     setError(null);
     try {
-      // Resolve each draft image to a mediaId (in display order).
-      const mediaIds: string[] = [];
+      // Resolve each draft image to {mediaId, url, crop} (in display order) — Core
+      // stores this snapshot directly rather than looking the media up itself.
+      const postImages: { mediaId: string; url: string; crop: Crop }[] = [];
       for (const img of images) {
         if (img.source.kind === "file") {
           const webp = await fileToWebp(img.source.file, 1600, 0.85);
           const media = await uploadMedia(webp, img.crop);
-          mediaIds.push(media.id);
+          postImages.push({ mediaId: media.id, url: media.url, crop: img.crop });
         } else if (img.source.kind === "url") {
           const media = await createExternalMedia(img.source.url, img.crop);
-          mediaIds.push(media.id);
+          postImages.push({ mediaId: media.id, url: media.url, crop: img.crop });
         } else {
+          let url = img.previewUrl;
           if (!sameCrop(img.crop, img.source.originalCrop)) {
-            await updateMediaCrop(img.source.mediaId, img.crop);
+            const media = await updateMediaCrop(img.source.mediaId, img.crop);
+            url = media.url;
           }
-          mediaIds.push(img.source.mediaId);
+          postImages.push({ mediaId: img.source.mediaId, url, crop: img.crop });
         }
       }
       const payload = {
         collectionId,
         title: title.trim(),
         content: body.trim() || undefined,
-        mediaIds,
+        images: postImages,
       };
       const saved =
         mode === "create" ? await createPost(payload) : await updatePost(post!.id, payload);

@@ -1,13 +1,15 @@
-package com.dannest.media;
+package com.dannest.common;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.Getter;
 
 /**
- * A display-time crop: the visible rectangle as fractions (0..1) of the image.
- * Applied with CSS at render time — nothing is re-encoded. The default is the whole
- * image ({@code 0,0,1,1}). Reusable wherever an image is placed (cover, avatar, …).
+ * A display-time crop: the visible rectangle as fractions (0..1) of an image. Applied
+ * with CSS at render time — nothing is re-encoded. The default is the whole image
+ * ({@code 0,0,1,1}). Embedded wherever an image reference is placed (a post's image,
+ * a user's avatar, a collection's cover) — column names are remapped per-use via
+ * {@code @AttributeOverrides} since each entity can embed more than one.
  */
 @Embeddable
 @Getter

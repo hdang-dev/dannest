@@ -12,9 +12,10 @@ only — which libraries do the work.
 
 | Service | Role |
 |---|---|
-| **web** | Next.js frontend. The only thing users directly load in a browser. Talks to both backend APIs. |
-| **services/core** | Main backend API — auth, users, collections, posts, comments, follows, media. Owns its own Postgres DB. Publishes events when something happens. |
+| **web** | Next.js frontend. The only thing users directly load in a browser. Talks to all three backend APIs directly. |
+| **services/core** | Main backend API — auth, users, collections, posts, comments, follows. Owns its own Postgres DB. Publishes events when something happens. References media assets by opaque id + a denormalized url/crop snapshot — never queries services/media. |
 | **services/notification** | Small backend API dedicated to notifications only. Owns a *separate* Postgres DB. Consumes events from Core and pushes them live over WebSocket. |
+| **services/media** | Small backend API (Express + MongoDB) dedicated to image assets only — upload, crop, delete. The only service that talks to Cloudflare R2. Owns its own MongoDB, shares no database with Core. |
 
 ### Third-party / managed
 
@@ -22,10 +23,11 @@ only — which libraries do the work.
 |---|---|
 | **Google Sign-In** | Identity provider. User logs in with Google in the browser; the frontend sends the resulting ID token to Core, which verifies it with Google once, then never talks to Google again for that session. |
 | **Neon** | Managed Postgres. Hosts two separate databases — one for Core, one for Notification. |
+| **MongoDB Atlas** | Managed MongoDB. Used only by services/media, for its media documents. |
 | **CloudAMQP** | Managed RabbitMQ. The message broker Core publishes events to and Notification consumes from. |
 | **Upstash** | Managed Redis. Used only by Core, to store refresh tokens server-side (so they can be revoked). |
-| **Cloudflare R2** | S3-compatible object storage. Used only by Core, to store uploaded media (images). |
-| **Render** | PaaS hosting for all three of our services (web, core, notification). Runs health checks, serves the live URLs. |
+| **Cloudflare R2** | S3-compatible object storage. Used only by services/media, to store uploaded media (images). |
+| **Render** | PaaS hosting for all four of our services (web, core, notification, media). Runs health checks, serves the live URLs. |
 | **GitHub Actions** | CI/CD. On every push, checks the code and deploys whichever service(s) changed. |
 | **Terraform** | Infrastructure-as-code tool (not a runtime service) that defines the Render resources above declaratively, in [infra/main.tf](../../infra/main.tf). |
 
@@ -38,9 +40,11 @@ flowchart TD
     Core["core\n(Spring Boot)"]
     MQ["CloudAMQP\n(RabbitMQ)"]
     Notif["notification\n(Spring Boot)"]
+    Media["media\n(Express)"]
     NeonCore[("Neon Postgres #1\ncore DB")]
     Redis[("Upstash Redis\nrefresh tokens")]
-    R2[("Cloudflare R2\nmedia")]
+    R2[("Cloudflare R2\nmedia bytes")]
+    Mongo[("MongoDB Atlas\nmedia DB")]
     NeonNotif[("Neon Postgres #2\nnotification DB")]
     Render["Render"]
     GHA["GitHub Actions"]
@@ -49,38 +53,45 @@ flowchart TD
     Google -- "ID token (login only)" --> Web
     Web -- "REST (JWT)" --> Core
     Web -- "REST (JWT) + WebSocket" --> Notif
+    Web -- "REST (JWT)" --> Media
     Core -- "publish event\ndannest.events" --> MQ
     MQ -- "consume event" --> Notif
     Notif -. "WebSocket push (live)" .-> Web
     Core --> NeonCore
     Core --> Redis
-    Core --> R2
+    Media --> Mongo
+    Media --> R2
     Notif --> NeonNotif
     GHA -- "deploys" --> Render
     TF -- "provisioned" --> Render
     Render -. hosts .-> Web
     Render -. hosts .-> Core
     Render -. hosts .-> Notif
+    Render -. hosts .-> Media
 ```
 
 *(Rendered by any Mermaid-aware Markdown viewer — VS Code's built-in preview
 and GitHub both support it. If yours shows raw text instead of a diagram,
 tell me and I'll switch formats.)*
 
-`core` and `notification` never call each other directly and never share a
-database — the RabbitMQ event above is the *only* link between them. `web`
-is the only thing that talks to both backend services directly.
+`core`, `notification`, and `media` never call each other directly and never
+share a database — the RabbitMQ event above is the only link between `core`
+and `notification`; `core` and `media` have no link at all beyond the id +
+denormalized url/crop snapshot `core` stores when a client attaches a media
+asset (see flow (d) below). `web` is the only thing that talks to all three
+backend services directly.
 
 Plain-English version:
 
 1. User logs into **web** via **Google Sign-In**.
 2. **web** sends that Google token to **core**, which verifies it with Google once and issues DanNest's own JWT.
-3. **web** uses that JWT for every REST call to **core** and **notification**.
-4. **core** stores its data in its own **Neon** Postgres, refresh tokens in **Upstash** Redis, and uploaded images in **Cloudflare R2**.
-5. Whenever something notification-worthy happens, **core** publishes an event to **CloudAMQP** (RabbitMQ). It doesn't know or care who's listening.
-6. **notification** consumes that event, saves it to its own **Neon** Postgres, and pushes it live to **web** over a WebSocket.
-7. **core** and **notification** never call each other directly and never share a database — RabbitMQ is the only link.
-8. All three of our services are hosted on **Render**; **GitHub Actions** deploys them on every push; **Terraform** is what originally provisioned them on Render.
+3. **web** uses that JWT for every REST call to **core**, **notification**, and **media**.
+4. **core** stores its data in its own **Neon** Postgres and refresh tokens in **Upstash** Redis.
+5. **media** stores its asset metadata in its own **MongoDB Atlas** and uploaded image bytes in **Cloudflare R2** — **core** never touches either.
+6. Whenever something notification-worthy happens, **core** publishes an event to **CloudAMQP** (RabbitMQ). It doesn't know or care who's listening.
+7. **notification** consumes that event, saves it to its own **Neon** Postgres, and pushes it live to **web** over a WebSocket.
+8. **core**, **notification**, and **media** never call each other directly and never share a database.
+9. All four of our services are hosted on **Render**; **GitHub Actions** deploys them on every push; **Terraform** is what originally provisioned them on Render.
 
 ---
 
@@ -112,7 +123,6 @@ Plain-English version:
 | `flyway-core` / `flyway-database-postgresql` | Versioned SQL schema migrations. |
 | `spring-boot-starter-data-redis` | Redis client, used to store refresh tokens. |
 | `spring-boot-starter-amqp` | RabbitMQ client — publishes domain events. |
-| `software.amazon.awssdk:s3` | S3-compatible client, pointed at Cloudflare R2 for media uploads. |
 | `lombok` | Generates getters/setters/builders, less boilerplate. |
 | `mapstruct` | Generates entity ↔ DTO mapping code. |
 | `spring-boot-starter-actuator` | Health check endpoint (`/actuator/health`) for Render. |
@@ -126,6 +136,21 @@ reasons, minus Redis/AWS/Google (not needed here), plus one addition:
 | Library | What it's for |
 |---|---|
 | `spring-boot-starter-websocket` | STOMP-over-WebSocket support — pushes live notifications to connected browsers. |
+
+### services/media (Express + TypeScript)
+
+A different stack on purpose — see [Lesson 4](../lessons/lesson-4-microservices.md)
+for why splitting this out was worth doing even at this project's scale.
+
+| Library | What it's for |
+|---|---|
+| `express` | REST routes, middleware, JSON handling. |
+| `typescript` | Static typing; compiled to JS at build time (`tsc`), run with `tsx` in dev. |
+| `mongoose` | ODM for MongoDB — schema + queries for the `media` collection. |
+| `jsonwebtoken` | Verifies the same HS256 JWT Core issues (shares `JWT_SECRET`) — no login of its own. |
+| `multer` | Parses multipart file uploads. |
+| `@aws-sdk/client-s3` | S3-compatible client, pointed at Cloudflare R2 for media uploads (same bucket Core used pre-split). |
+| `cors` | Allows the web origin to call this API directly (same `CORS_ALLOWED_ORIGINS` pattern as Core/Notification). |
 
 ---
 
@@ -214,21 +239,64 @@ no-op. `COMMENT_REPLY` (replying to someone's comment) follows the exact
 same shape — only the trigger and recipient differ (`CommentService.java`
 notifies the parent comment's author instead of a list of followers).
 
-### d) Upload media (e.g. a post's image)
+### d) Upload a post image, attach it to the post
+
+Media is a separate service now — creating a post that includes an image is
+**two calls from `web`**, never a call from `core` to `media` or back. `core`
+stores the id plus a denormalized `url`/crop snapshot it's handed, not a live
+reference — see [db-schema.md](db-schema.md)'s *Image crop* section for why.
 
 ```mermaid
 sequenceDiagram
     participant W as web
-    participant C as core
+    participant M as media
     participant R2 as Cloudflare R2
+    participant DB2 as Atlas (media DB)
+    participant C as core
     participant DB1 as Neon (core DB)
 
-    W->>C: POST /api/v1/media (multipart file + crop box)
-    C->>R2: PUT object (S3-compatible API)
-    R2-->>C: object URL
-    C->>DB1: save Media row (url, crop metadata)
-    C-->>W: 201 MediaResponse { url }
+    W->>M: POST /api/v1/media (multipart file + crop box)
+    M->>R2: PUT object (S3-compatible API)
+    R2-->>M: object URL
+    M->>DB2: save Media doc (url, crop)
+    M-->>W: 201 { id, url, crop }
+    W->>C: POST /api/v1/posts { images: [{mediaId, url, crop}, ...] }
+    C->>DB1: save Post + post_media rows (url/crop copied in, not looked up)
+    C-->>W: 201 PostResponse
 ```
 
-`notification` is never involved here — media is entirely a `core` +
-Cloudflare R2 concern.
+`core` never calls `media`, and `media` never calls `core` — `web` is the one
+holding both responses and sequencing the two calls. `notification` isn't
+involved at all.
+
+### e) Re-crop an already-attached image (avatar, cover, or post image)
+
+Same two-call shape, opposite motivation: `media` owns the mutation, `core`
+just needs its stale snapshot refreshed. This is an explicit action the user
+triggers (open the cropper again, hit Save) — nothing keeps the two in sync
+automatically, and nothing needs to: `media`'s `url` doesn't change on a crop
+edit, only `crop` does, and `core` only had a copy of `crop` in the first place.
+
+```mermaid
+sequenceDiagram
+    participant W as web
+    participant M as media
+    participant C as core
+
+    W->>M: PATCH /api/v1/media/{id} (new crop box)
+    M-->>W: 200 { id, url, crop }
+    W->>C: PATCH /api/v1/users/me { avatarMediaId, avatarMediaUrl, avatarCrop }
+    C-->>W: 200 UserProfileResponse
+```
+
+(Same shape for a collection's cover via `PATCH /api/v1/collections/{id}`, or
+a post's images via `PATCH /api/v1/posts/{id}`.)
+
+### f) Delete a media asset
+
+Not yet wired into any `web` UI (`deleteMedia()` exists in
+[media.ts](../../web/src/lib/media.ts) but nothing calls it — same status as
+`deletePost()`). When it is, the shape is: `core` first (clear the reference,
+e.g. `avatarMediaId: null`), then `media` (soft-delete the doc, free the R2
+bytes) — that order means a failure on the second call never leaves `core`
+pointing at bytes that are about to disappear.

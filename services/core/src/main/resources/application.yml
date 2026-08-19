@@ -106,14 +106,5 @@ app:
     cors:
         allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
-# --- Object storage (Cloudflare R2, via the S3 API) ---
-# R2 speaks the S3 protocol, so we use the AWS S3 SDK pointed at R2's endpoint.
-# public-base-url is the bucket's public URL (r2.dev or a custom domain); it's
-# stored on each media row so the frontend can load the image directly.
-storage:
-    r2:
-        account-id: ${R2_ACCOUNT_ID:}
-        access-key: ${R2_ACCESS_KEY:}
-        secret-key: ${R2_SECRET_KEY:}
-        bucket: ${R2_BUCKET:dannest-media}
-        public-base-url: ${R2_PUBLIC_BASE_URL:}
+# Object storage (Cloudflare R2) moved to services/media — Core no longer uploads
+# bytes or talks to R2 directly (see docs/tech/architecture-flows.md).

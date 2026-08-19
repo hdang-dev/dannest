@@ -1,7 +1,11 @@
 package com.dannest.collection;
 
 import com.dannest.common.BaseEntity;
+import com.dannest.common.ImageCrop;
+import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
@@ -32,8 +36,24 @@ public class Collection extends BaseEntity {
     @Column(columnDefinition = "text")
     private String description;
 
+    /** Opaque reference into services/media — no FK, that service owns the asset's lifecycle. */
     @Column(name = "cover_media_id")
     private UUID coverMediaId;
+
+    /** Denormalized snapshot of the media service's url/crop, copied at write time
+     * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */
+    @Column(name = "cover_url", length = 1024)
+    private String coverUrl;
+
+    @Builder.Default
+    @Embedded
+    @AttributeOverrides({
+        @AttributeOverride(name = "x", column = @Column(name = "cover_crop_x")),
+        @AttributeOverride(name = "y", column = @Column(name = "cover_crop_y")),
+        @AttributeOverride(name = "width", column = @Column(name = "cover_crop_width")),
+        @AttributeOverride(name = "height", column = @Column(name = "cover_crop_height")),
+    })
+    private ImageCrop coverCrop = ImageCrop.full();
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

@@ -20,6 +20,7 @@ locals {
   web_url          = "https://dannest-punh.onrender.com"
   backend_url      = "https://dannest-service-jauh.onrender.com"
   notification_url = "https://dannest-notification.onrender.com"
+  media_url        = "https://dannest-media.onrender.com"
 }
 
 # ---- Backend API (Core): Docker service built from services/core/Dockerfile ----
@@ -62,12 +63,8 @@ resource "render_web_service" "backend" {
     REDIS_PASSWORD    = { value = var.redis_password }
     REDIS_SSL_ENABLED = { value = "true" }
 
-    # Object storage (Cloudflare R2) — media uploads.
-    R2_ACCOUNT_ID      = { value = var.r2_account_id }
-    R2_ACCESS_KEY      = { value = var.r2_access_key }
-    R2_SECRET_KEY      = { value = var.r2_secret_key }
-    R2_BUCKET          = { value = var.r2_bucket }
-    R2_PUBLIC_BASE_URL = { value = var.r2_public_base_url }
+    # Object storage (Cloudflare R2) moved to services/media — Core no longer
+    # uploads bytes or talks to R2 directly (see docs/tech/architecture-flows.md).
 
     # Message broker (RabbitMQ / CloudAMQP) — publishes domain events for the
     # notification service to consume. Port 5671 + SSL is CloudAMQP's TLS port.
@@ -117,6 +114,40 @@ resource "render_web_service" "notification" {
   }
 }
 
+# ---- Media service: Docker service built from services/media/Dockerfile ----
+resource "render_web_service" "media" {
+  name   = "dannest-media"
+  plan   = "free"
+  region = "virginia"
+
+  runtime_source = {
+    docker = {
+      repo_url        = var.repo_url
+      branch          = "main"
+      dockerfile_path = "./services/media/Dockerfile"
+      context         = "./services/media"
+      auto_deploy     = false # GitHub Actions (the robot) will trigger deploys
+    }
+  }
+
+  health_check_path = "/healthz"
+
+  env_vars = {
+    MONGO_URI = { value = var.mongo_uri }
+
+    # Must match Core's JWT_SECRET exactly — this service verifies tokens Core issues.
+    JWT_SECRET           = { value = var.jwt_secret }
+    CORS_ALLOWED_ORIGINS = { value = local.web_url }
+
+    # Object storage (Cloudflare R2) — media uploads. Same bucket Core used pre-split.
+    R2_ACCOUNT_ID      = { value = var.r2_account_id }
+    R2_ACCESS_KEY      = { value = var.r2_access_key }
+    R2_SECRET_KEY      = { value = var.r2_secret_key }
+    R2_BUCKET          = { value = var.r2_bucket }
+    R2_PUBLIC_BASE_URL = { value = var.r2_public_base_url }
+  }
+}
+
 # ---- Web frontend: Next.js run as a Node service ----
 resource "render_web_service" "web" {
   name   = "dannest"
@@ -143,6 +174,7 @@ resource "render_web_service" "web" {
     NEXT_PUBLIC_GOOGLE_CLIENT_ID     = { value = var.google_client_id }
     NEXT_PUBLIC_API_URL              = { value = local.backend_url }
     NEXT_PUBLIC_NOTIFICATION_API_URL = { value = local.notification_url }
+    NEXT_PUBLIC_MEDIA_API_URL        = { value = local.media_url }
   }
 }
 
@@ -157,4 +189,8 @@ output "web_url" {
 
 output "notification_url" {
   value = render_web_service.notification.url
+}
+
+output "media_url" {
+  value = render_web_service.media.url
 }

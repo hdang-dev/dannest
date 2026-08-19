@@ -1,6 +1,6 @@
 package com.dannest.comment.dto;
 
-import com.dannest.media.dto.CropDto;
+import com.dannest.common.CropDto;
 import java.time.Instant;
 import java.util.UUID;
 

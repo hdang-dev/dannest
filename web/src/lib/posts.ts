@@ -35,11 +35,15 @@ export type Post = {
   updatedAt: string;
 };
 
+// One image attached at post creation/update time — Core stores this snapshot
+// instead of looking the media up itself (see architecture-flows.md's media-split notes).
+export type PostImageInput = { mediaId: string; url: string; crop: Crop };
+
 export type CreatePostInput = {
   collectionId: string;
   title: string;
   content?: string;
-  mediaIds?: string[]; // images in display order (each owned by the caller)
+  images?: PostImageInput[]; // in display order (each media id owned by the caller)
 };
 
 export type UpdatePostInput = Partial<CreatePostInput>;

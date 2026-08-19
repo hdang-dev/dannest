@@ -10,12 +10,10 @@ import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.follow.CollectionFollowRepository;
-import com.dannest.media.Media;
-import com.dannest.media.MediaRepository;
-import com.dannest.media.dto.CropDto;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.dto.CreatePostRequest;
+import com.dannest.post.dto.PostImageInput;
 import com.dannest.post.dto.PostMediaResponse;
 import com.dannest.post.dto.PostResponse;
 import com.dannest.post.dto.UpdatePostRequest;
@@ -28,7 +26,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -62,7 +59,6 @@ public class PostService {
     private final PostLikeRepository postLikeRepository;
     private final CommentRepository commentRepository;
     private final CollectionRepository collectionRepository;
-    private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
     private final CollectionFollowRepository collectionFollowRepository;
     private final NotificationService notificationService;
@@ -76,7 +72,7 @@ public class PostService {
                 .title(request.title().trim())
                 .content(trimToNull(request.content()))
                 .build());
-        attachMedia(userId, post, request.mediaIds());
+        attachMedia(post, request.images());
         notifyFollowers(userId, collection, post);
         return toResponse(post, userId);
     }
@@ -161,11 +157,11 @@ public class PostService {
         if (request.content() != null) {
             post.setContent(trimToNull(request.content()));
         }
-        // Providing mediaIds replaces the post's images wholesale.
-        if (request.mediaIds() != null) {
+        // Providing images replaces the post's images wholesale.
+        if (request.images() != null) {
             postMediaRepository.deleteByPostId(post.getId());
             postMediaRepository.flush();
-            attachMedia(userId, post, request.mediaIds());
+            attachMedia(post, request.images());
         }
         return toResponse(post, userId);
     }
@@ -204,10 +200,10 @@ public class PostService {
     }
 
     /**
-     * Map a page of posts to responses, batching the images, social counts, and the
-     * collection/author/avatar lookups into a handful of grouped queries rather
-     * than
-     * several per post.
+     * Map a page of posts to responses, batching the images and social counts, and the
+     * collection/author lookups into a handful of grouped queries rather than several
+     * per post. Author avatars are the author's own denormalized snapshot — no media
+     * lookup needed.
      */
     private List<PostResponse> toResponses(List<Post> posts, UUID userId) {
         if (posts.isEmpty()) {
@@ -216,13 +212,11 @@ public class PostService {
         List<UUID> ids = posts.stream().map(Post::getId).toList();
 
         List<PostMedia> postMediaRows = postMediaRepository.findByPostIdInOrderByDisplayOrder(ids);
-        Set<UUID> imageMediaIds = postMediaRows.stream().map(PostMedia::getMediaId).collect(Collectors.toSet());
-        Map<UUID, Media> imageMediaById = toMap(mediaRepository.findAllById(imageMediaIds), Media::getId);
         Map<UUID, List<PostMediaResponse>> imagesByPost = new LinkedHashMap<>();
         for (PostMedia pm : postMediaRows) {
             imagesByPost
                     .computeIfAbsent(pm.getPostId(), k -> new ArrayList<>())
-                    .add(PostMediaResponse.from(pm, imageMediaById.get(pm.getMediaId())));
+                    .add(PostMediaResponse.from(pm));
         }
 
         Map<UUID, Long> likeCounts = toCountMap(postLikeRepository.countByPostIds(ids));
@@ -234,15 +228,11 @@ public class PostService {
                 Collection::getId);
         Set<UUID> authorIds = posts.stream().map(Post::getAuthorId).collect(Collectors.toSet());
         Map<UUID, User> authorsById = toMap(userRepository.findAllById(authorIds), User::getId);
-        Set<UUID> avatarIds = authorsById.values().stream()
-                .map(User::getAvatarMediaId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<UUID, Media> avatarsById = toMap(mediaRepository.findAllById(avatarIds), Media::getId);
 
         return posts.stream()
                 .map(p -> {
                     Collection c = collectionsById.get(p.getCollectionId());
                     User a = authorsById.get(p.getAuthorId());
-                    Media authorAvatar = a.getAvatarMediaId() != null ? avatarsById.get(a.getAvatarMediaId()) : null;
                     return new PostResponse(
                             p.getId(),
                             c.getId(),
@@ -250,8 +240,8 @@ public class PostService {
                             c.getVisibility(),
                             a.getId(),
                             a.getUsername(),
-                            authorAvatar != null ? authorAvatar.getUrl() : null,
-                            authorAvatar != null ? CropDto.from(authorAvatar.getCrop()) : null,
+                            a.getAvatarMediaUrl(),
+                            a.getAvatarMediaUrl() != null ? com.dannest.common.CropDto.from(a.getAvatarCrop()) : null,
                             p.getTitle(),
                             p.getContent(),
                             imagesByPost.getOrDefault(p.getId(), List.of()),
@@ -280,25 +270,28 @@ public class PostService {
     // -------------------------------------------------------------------
 
     /**
-     * Resolve the mediaIds (owned by the caller) into ordered {@link PostMedia}
-     * rows.
+     * Store the post's images from the caller-supplied url/crop snapshots (services/media
+     * already enforced ownership when it issued those media ids — see media-split notes).
      */
-    private void attachMedia(UUID userId, Post post, List<UUID> mediaIds) {
-        if (mediaIds == null) {
+    private void attachMedia(Post post, List<PostImageInput> images) {
+        if (images == null) {
             return;
         }
         int order = 0;
         Set<UUID> seen = new HashSet<>();
-        for (UUID mediaId : mediaIds) {
-            if (mediaId == null || !seen.add(mediaId)) {
+        for (PostImageInput image : images) {
+            if (image == null || image.mediaId() == null || !seen.add(image.mediaId())) {
                 continue; // ignore nulls and duplicates (the (post, media) pair is unique)
             }
-            Media media = resolveOwnedMedia(userId, mediaId);
-            postMediaRepository.save(PostMedia.builder()
+            PostMedia.PostMediaBuilder builder = PostMedia.builder()
                     .postId(post.getId())
-                    .mediaId(media.getId())
-                    .displayOrder(order++)
-                    .build());
+                    .mediaId(image.mediaId())
+                    .url(image.url())
+                    .displayOrder(order++);
+            if (image.crop() != null) {
+                builder.crop(image.crop().toEntity());
+            }
+            postMediaRepository.save(builder.build());
         }
     }
 
@@ -359,16 +352,6 @@ public class PostService {
         if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
             throw new ResourceNotFoundException("Collection not found: " + collectionId);
         }
-    }
-
-    private Media resolveOwnedMedia(UUID userId, UUID mediaId) {
-        Media media = mediaRepository
-                .findByIdAndDeletedAtIsNull(mediaId)
-                .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
-        if (!media.getOwnerId().equals(userId)) {
-            throw new ForbiddenException("You do not own this media");
-        }
-        return media;
     }
 
     private static String trimToNull(String s) {

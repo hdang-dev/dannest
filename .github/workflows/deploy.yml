@@ -13,6 +13,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       core: ${{ steps.filter.outputs.core }}
       notification: ${{ steps.filter.outputs.notification }}
+      media: ${{ steps.filter.outputs.media }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -25,6 +26,8 @@ jobs:
               - 'services/core/**'
             notification:
               - 'services/notification/**'
+            media:
+              - 'services/media/**'
 
   # ---- WEB: check, then deploy — only if web/ changed ----
   check-web:
@@ -149,3 +152,33 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             "https://api.render.com/v1/services/srv-d9mqrofqj5pc73dk07k0/deploys"
+
+  # ---- MEDIA: check, then deploy — only if services/media/ changed ----
+  check-media:
+    needs: changes
+    if: ${{ needs.changes.outputs.media == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/media
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/media/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  deploy-media:
+    needs: [changes, check-media]
+    if: ${{ needs.changes.outputs.media == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — media
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            "https://api.render.com/v1/services/srv-da2s5jr7uimc73bagnl0/deploys"

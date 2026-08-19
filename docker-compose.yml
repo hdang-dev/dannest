@@ -50,6 +50,18 @@ services:
         ports:
             - "6379:6379"
 
+    # Backs services/media (see services/media/src/models/Media.js). Run with
+    # `npm run dev` on the host, same as the Spring Boot services.
+    mongo-media:
+        image: mongo:7
+        container_name: dannest-mongo-media
+        restart: unless-stopped
+        ports:
+            - "27017:27017"
+        volumes:
+            - dannest_media_data:/data/db
+
 volumes:
     dannest_core_data:
     dannest_notification_data:
+    dannest_media_data:

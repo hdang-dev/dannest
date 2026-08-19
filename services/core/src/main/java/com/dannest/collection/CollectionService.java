@@ -3,11 +3,10 @@ package com.dannest.collection;
 import com.dannest.collection.dto.CollectionResponse;
 import com.dannest.collection.dto.CreateCollectionRequest;
 import com.dannest.collection.dto.UpdateCollectionRequest;
+import com.dannest.common.BadRequestException;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
-import com.dannest.media.Media;
-import com.dannest.media.MediaRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.util.ArrayList;
@@ -36,7 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class CollectionService {
 
     private final CollectionRepository collectionRepository;
-    private final MediaRepository mediaRepository;
     private final UserRepository userRepository;
 
     public CollectionResponse create(UUID userId, CreateCollectionRequest request) {
@@ -48,9 +46,7 @@ public class CollectionService {
                 .visibility(visibility)
                 .build();
         collection.setDescription(request.description());
-        if (request.coverMediaId() != null) {
-            collection.setCoverMediaId(resolveOwnedCover(userId, request.coverMediaId()).getId());
-        }
+        applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
         return toResponse(collectionRepository.save(collection));
     }
 
@@ -128,8 +124,9 @@ public class CollectionService {
         // clearCover removes the cover; otherwise a new coverMediaId replaces it.
         if (Boolean.TRUE.equals(request.clearCover())) {
             collection.setCoverMediaId(null);
+            collection.setCoverUrl(null);
         } else if (request.coverMediaId() != null) {
-            collection.setCoverMediaId(resolveOwnedCover(userId, request.coverMediaId()).getId());
+            applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
         }
         return toResponse(collection);
     }
@@ -153,8 +150,8 @@ public class CollectionService {
     }
 
     /**
-     * Map a page of collections to responses, batching the owner/owner-avatar/cover
-     * lookups into a handful of grouped queries rather than several per collection.
+     * Map a page of collections to responses, batching the owner lookup into a single
+     * grouped query rather than one per collection.
      * Public — {@link com.dannest.follow.FollowService} reuses it for followed collections.
      */
     public List<CollectionResponse> toResponses(List<Collection> collections) {
@@ -170,29 +167,8 @@ public class CollectionService {
             ownersById.put(u.getId(), u);
         }
 
-        Set<UUID> mediaIds = new HashSet<>();
-        for (User owner : ownersById.values()) {
-            if (owner.getAvatarMediaId() != null) {
-                mediaIds.add(owner.getAvatarMediaId());
-            }
-        }
-        for (Collection c : collections) {
-            if (c.getCoverMediaId() != null) {
-                mediaIds.add(c.getCoverMediaId());
-            }
-        }
-        Map<UUID, Media> mediaById = new LinkedHashMap<>();
-        for (Media m : mediaRepository.findAllById(mediaIds)) {
-            mediaById.put(m.getId(), m);
-        }
-
         return collections.stream()
-                .map(c -> {
-                    User owner = ownersById.get(c.getOwnerId());
-                    Media ownerAvatar = owner.getAvatarMediaId() != null ? mediaById.get(owner.getAvatarMediaId()) : null;
-                    Media cover = c.getCoverMediaId() != null ? mediaById.get(c.getCoverMediaId()) : null;
-                    return CollectionResponse.from(c, owner, ownerAvatar, cover);
-                })
+                .map(c -> CollectionResponse.from(c, ownersById.get(c.getOwnerId())))
                 .toList();
     }
 
@@ -224,14 +200,16 @@ public class CollectionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
     }
 
-    /** Resolve a cover media id, enforcing that the caller owns the referenced asset. */
-    private Media resolveOwnedCover(UUID userId, UUID mediaId) {
-        Media media = mediaRepository
-                .findByIdAndDeletedAtIsNull(mediaId)
-                .orElseThrow(() -> new ResourceNotFoundException("Media not found: " + mediaId));
-        if (!media.getOwnerId().equals(userId)) {
-            throw new ForbiddenException("You do not own this media");
+    /** Stores the cover reference plus the url/crop snapshot the caller sent (services/media
+     * already enforced ownership when it issued that media id — see media-split notes). */
+    private void applyCover(Collection collection, UUID mediaId, String url, com.dannest.common.CropDto crop) {
+        if (url == null || url.isBlank()) {
+            throw new BadRequestException("coverUrl is required when setting coverMediaId");
         }
-        return media;
+        collection.setCoverMediaId(mediaId);
+        collection.setCoverUrl(url);
+        if (crop != null) {
+            collection.setCoverCrop(crop.toEntity());
+        }
     }
 }

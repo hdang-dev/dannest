@@ -1,7 +1,7 @@
 package com.dannest.post.dto;
 
 import com.dannest.collection.Visibility;
-import com.dannest.media.dto.CropDto;
+import com.dannest.common.CropDto;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

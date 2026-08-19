@@ -22,6 +22,10 @@ export type UpdateProfileInput = {
   username?: string;
   bio?: string;
   avatarMediaId?: string; // a media asset (uploaded or external) the caller owns
+  // Required alongside avatarMediaId — Core stores this snapshot instead of looking
+  // the media up itself (see docs/tech/architecture-flows.md's media-split notes).
+  avatarMediaUrl?: string;
+  avatarCrop?: Crop;
   clearAvatar?: boolean; // remove the avatar
 };
 

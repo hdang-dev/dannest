@@ -1,7 +1,6 @@
 package com.dannest.user.dto;
 
-import com.dannest.media.Media;
-import com.dannest.media.dto.CropDto;
+import com.dannest.common.CropDto;
 import com.dannest.user.User;
 import java.time.Instant;
 import java.util.UUID;
@@ -9,9 +8,10 @@ import java.util.UUID;
 /**
  * API view of a user's profile.
  *
- * <p>{@code avatarUrl}/{@code avatarCrop} are sourced only from {@link User#getAvatar()}
- * (a user-uploaded or embedded {@link Media}) — never from the legacy OAuth
- * {@code avatarUrl} string, which is provider bookkeeping, not the profile photo.
+ * <p>{@code avatarUrl}/{@code avatarCrop} are sourced only from the user's own
+ * denormalized {@code avatarMediaUrl}/{@code avatarCrop} snapshot (see services/media) —
+ * never from the legacy OAuth {@code avatarUrl} string, which is provider bookkeeping,
+ * not the profile photo.
  *
  * <p>{@code email} is only populated for the profile owner — other viewers must not see it.
  */
@@ -26,19 +26,16 @@ public record UserProfileResponse(
         Instant createdAt,
         Instant updatedAt) {
 
-    /**
-     * Map an entity to its response. Caller resolves the avatar {@link Media} (if any).
-     * {@code includeEmail} should only be true when the caller is viewing their own profile.
-     */
-    public static UserProfileResponse from(User user, Media avatar, boolean includeEmail) {
+    /** {@code includeEmail} should only be true when the caller is viewing their own profile. */
+    public static UserProfileResponse from(User user, boolean includeEmail) {
         return new UserProfileResponse(
                 user.getId(),
                 user.getUsername(),
                 includeEmail ? user.getEmail() : null,
                 user.getBio(),
-                avatar != null ? avatar.getId() : null,
-                avatar != null ? avatar.getUrl() : null,
-                avatar != null ? CropDto.from(avatar.getCrop()) : null,
+                user.getAvatarMediaId(),
+                user.getAvatarMediaUrl(),
+                user.getAvatarMediaUrl() != null ? CropDto.from(user.getAvatarCrop()) : null,
                 user.getCreatedAt(),
                 user.getUpdatedAt());
     }

@@ -9,12 +9,13 @@ import java.util.UUID;
 /**
  * Body of POST /api/v1/posts.
  *
- * <p>{@code mediaIds} are the post's images, in display order — each must be a media
- * asset the caller owns (uploaded or external). A post may have zero images.
+ * <p>{@code images} are the post's images, in display order — each carries the media id
+ * plus the url/crop services/media returned for it (Core no longer looks media up
+ * itself). A post may have zero images.
  */
 public record CreatePostRequest(
         @NotNull UUID collectionId,
         @NotBlank @Size(max = 200) String title,
         String content,
-        List<UUID> mediaIds) {
+        List<PostImageInput> images) {
 }

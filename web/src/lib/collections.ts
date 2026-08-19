@@ -41,6 +41,10 @@ export type CreateCollectionInput = {
   description?: string;
   visibility?: Visibility;
   coverMediaId?: string; // a media asset (uploaded or external)
+  // Required alongside coverMediaId — Core stores this snapshot instead of looking
+  // the media up itself (see docs/tech/architecture-flows.md's media-split notes).
+  coverUrl?: string;
+  coverCrop?: Crop;
 };
 
 export type UpdateCollectionInput = Partial<CreateCollectionInput> & {
