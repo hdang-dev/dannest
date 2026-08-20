@@ -105,6 +105,12 @@ jwt:
 app:
     cors:
         allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    # --- Feed cache (Redis) ---
+    # How long a cached feed page (which post ids belong on it) can go stale before
+    # self-healing, between explicit evictions on new-post creation. Not load-bearing
+    # for correctness — likes/comments/likedByMe are always computed live regardless.
+    cache:
+        feed-ttl-seconds: ${FEED_CACHE_TTL_SECONDS:20}
 
 # Object storage (Cloudflare R2) moved to services/media — Core no longer uploads
 # bytes or talks to R2 directly (see docs/tech/architecture-flows.md).

@@ -15,6 +15,7 @@ import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.Post;
 import com.dannest.post.PostRepository;
+import com.dannest.post.TrendingScoreService;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.util.LinkedHashMap;
@@ -47,6 +48,7 @@ public class CommentService {
     private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final TrendingScoreService trendingScoreService;
 
     @Transactional(readOnly = true)
     public PagedResponse<CommentResponse> list(UUID userId, UUID postId, Pageable pageable) {
@@ -86,6 +88,7 @@ public class CommentService {
                     parent.getAuthorId(), userId, NotificationType.COMMENT_REPLY,
                     post.getCollectionId(), postId, comment.getId());
         }
+        trendingScoreService.incrementComment(postId);
         return toResponse(comment);
     }
 

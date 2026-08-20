@@ -25,7 +25,7 @@ only — which libraries do the work.
 | **Neon** | Managed Postgres. Hosts two separate databases — one for Core, one for Notification. |
 | **MongoDB Atlas** | Managed MongoDB. Used only by services/media, for its media documents. |
 | **CloudAMQP** | Managed RabbitMQ. The message broker Core publishes events to and Notification consumes from. |
-| **Upstash** | Managed Redis. Used only by Core, to store refresh tokens server-side (so they can be revoked). |
+| **Upstash** | Managed Redis. Used only by Core: refresh tokens (revocable sessions), the public feed's page cache, and the trending-posts sorted set. Notification does **not** use Redis — see [Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md) §4 for why a Redis-backed fix there was built and then deliberately reverted. |
 | **Cloudflare R2** | S3-compatible object storage. Used only by services/media, to store uploaded media (images). |
 | **Render** | PaaS hosting for all four of our services (web, core, notification, media). Runs health checks, serves the live URLs. |
 | **GitHub Actions** | CI/CD. On every push, checks the code and deploys whichever service(s) changed. |
@@ -121,7 +121,7 @@ Plain-English version:
 | `spring-boot-starter-data-jpa` | ORM (Hibernate) + repository interfaces. |
 | `postgresql` (JDBC driver) | Lets JPA talk to Postgres. |
 | `flyway-core` / `flyway-database-postgresql` | Versioned SQL schema migrations. |
-| `spring-boot-starter-data-redis` | Redis client, used to store refresh tokens. |
+| `spring-boot-starter-data-redis` | Redis client — refresh tokens, the public feed's page cache, and the trending-posts leaderboard (sorted set). |
 | `spring-boot-starter-amqp` | RabbitMQ client — publishes domain events. |
 | `lombok` | Generates getters/setters/builders, less boilerplate. |
 | `mapstruct` | Generates entity ↔ DTO mapping code. |
@@ -235,9 +235,12 @@ sequenceDiagram
 ([NotificationService.java](../../services/core/src/main/java/com/dannest/notification/NotificationService.java)
 in `core`, not to be confused with the whole `notification` service). It
 also enforces "never notify yourself": if `recipientId == actorId` it's a
-no-op. `COMMENT_REPLY` (replying to someone's comment) follows the exact
-same shape — only the trigger and recipient differ (`CommentService.java`
-notifies the parent comment's author instead of a list of followers).
+no-op. `COMMENT_REPLY` (replying to someone's comment), `FOLLOW`
+(following a collection), and `POST_LIKED` (liking a post) all follow the
+exact same shape — only the trigger and recipient differ
+(`CommentService.java` notifies the parent comment's author,
+`FollowService.java` notifies the collection owner, `PostService.java`
+notifies the post's author).
 
 ### d) Upload a post image, attach it to the post
 
@@ -300,3 +303,66 @@ Not yet wired into any `web` UI (`deleteMedia()` exists in
 e.g. `avatarMediaId: null`), then `media` (soft-delete the doc, free the R2
 bytes) — that order means a failure on the second call never leaves `core`
 pointing at bytes that are about to disappear.
+
+### g) Load the public feed (Redis-cached)
+
+Only `scope=FEED`'s default-sorted pages are cached, and only the *shared*
+part — which post ids are on the page, and the total count. Per-user data
+(likes, "did I like this") is never cached; it's recomputed live on every
+request, hit or miss. See [Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md)
+§2 for why.
+
+```mermaid
+sequenceDiagram
+    participant W as web
+    participant C as core (PostService.list)
+    participant R as Upstash Redis
+    participant DB as Neon (core DB)
+
+    W->>C: GET /api/v1/posts (scope=FEED)
+    C->>R: GET feed:posts:v1:{page}:{size}:{q}
+    alt cache hit
+        R-->>C: {postIds, totalElements, ...}
+    else cache miss
+        C->>DB: filter query + COUNT(*)
+        C->>R: SET feed:posts:v1:..., TTL 20s
+    end
+    C->>DB: findAllById(postIds) + live like/comment counts + likedByMe
+    C-->>W: 200 PagedResponse<PostResponse>
+```
+
+`PostService.create()` deletes every `feed:posts:v1:*` key after saving —
+a new post changes page 0 and every total count, so it can't wait out the
+TTL. Likes and comments never evict anything, because the part they'd
+affect was never cached to begin with.
+
+### h) Trending posts (Redis sorted set)
+
+A Redis ZSET (`trending:posts`), not RabbitMQ — the activity that feeds
+it (likes, comments) already happens inside `core`'s own request path, so
+there's no other service to hand an event to.
+
+```mermaid
+sequenceDiagram
+    participant W as web
+    participant C as core
+    participant DB as Neon (core DB)
+    participant R as Upstash Redis
+
+    W->>C: POST /api/v1/posts/{id}/likes
+    C->>DB: save PostLike
+    C->>R: ZINCRBY trending:posts +1 {postId}
+
+    W->>C: POST /api/v1/posts/{id}/comments
+    C->>DB: save Comment
+    C->>R: ZINCRBY trending:posts +2 {postId}
+
+    W->>C: GET /api/v1/posts/trending?limit=10
+    C->>R: ZREVRANGE trending:posts 0 9
+    R-->>C: ranked post ids
+    C->>DB: findAllById + visibility filter + live toResponses
+    C-->>W: 200 List<PostResponse>
+```
+
+No time decay yet — scores only ever accumulate, a known limitation (see
+[Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md) §3).

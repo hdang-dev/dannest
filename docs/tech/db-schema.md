@@ -183,9 +183,9 @@ querying Core's database anyway):
 | `id` | uuid PK | |
 | `recipient_id`, `actor_id` | uuid | reference `users.id` in Core's DB — logical only, no FK |
 | `actor_username`, `actor_avatar_url` | text | **denormalized** — copied from the event at write time, not looked up |
-| `type` | varchar(20) | `NEW_POST` \| `COMMENT_REPLY` |
+| `type` | varchar(20) | `NEW_POST` \| `COMMENT_REPLY` \| `FOLLOW` \| `POST_LIKED` |
 | `collection_id`, `collection_name` | uuid, text | `collection_name` denormalized, same reason as actor fields |
-| `post_id`, `comment_id` | uuid | `comment_id` nullable |
+| `post_id`, `comment_id` | uuid, nullable | `post_id` nullable since [V2\_\_nullable_post_id.sql](../../services/notification/src/main/resources/db/migration/V2__nullable_post_id.sql) — `FOLLOW` has no post; `comment_id` nullable for anything but a reply |
 | `read_at` | timestamptz, nullable | |
 | `created_at`, `updated_at` | timestamptz | |
 

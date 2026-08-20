@@ -8,6 +8,8 @@ import com.dannest.collection.dto.CollectionResponse;
 import com.dannest.common.BadRequestException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.notification.NotificationService;
+import com.dannest.notification.NotificationType;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +35,7 @@ public class FollowService {
     private final CollectionFollowRepository followRepository;
     private final CollectionRepository collectionRepository;
     private final CollectionService collectionService;
+    private final NotificationService notificationService;
 
     /** Follow a collection the caller may view and doesn't own; idempotent. */
     public void follow(UUID userId, UUID collectionId) {
@@ -42,6 +45,8 @@ public class FollowService {
                     .followerId(userId)
                     .collectionId(collection.getId())
                     .build());
+            notificationService.notify(
+                    collection.getOwnerId(), userId, NotificationType.FOLLOW, collectionId, null, null);
         }
     }
 

@@ -155,8 +155,9 @@ so **no setup is needed for local dev**. Override when needed:
 | `JWT_ACCESS_EXPIRATION_SECONDS` | `900` (15 min)                                    | Core                 |
 | `JWT_REFRESH_EXPIRATION_SECONDS`| `2592000` (30 days) — tracked in Redis, revocable  | Core                 |
 | `JWT_REFRESH_COOKIE_SECURE` / `JWT_REFRESH_COOKIE_SAME_SITE` | `false` / `Lax` (local) — `true` / `None` in production (web + Core are cross-site there) | Core |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / _(none)_ — backs refresh tokens only | Core |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | `localhost` / `6379` / _(none)_ — refresh tokens, feed cache, trending leaderboard | Core |
 | `REDIS_SSL_ENABLED`      | `false` (local) — `true` in production (Upstash)         | Core                 |
+| `FEED_CACHE_TTL_SECONDS` | `20` — safety-net TTL between explicit feed-cache evictions | Core |
 | `RABBITMQ_HOST`          | `localhost`                                             | both backends        |
 | `RABBITMQ_PORT`          | `5672` (local) — hosted brokers use `5671` + TLS         | both backends        |
 | `RABBITMQ_SSL_ENABLED`   | `false` (local) — `true` in production                  | both backends        |
@@ -236,6 +237,7 @@ of *why* things were built the way they were, including the mistakes:
 - [Lesson 3 — Google Auth](docs/lessons/lesson-3-google-auth.md)
 - [Lesson 4 — Monolith → Microservices](docs/lessons/lesson-4-microservices.md)
 - [Lesson 5 — Redis & refresh tokens](docs/lessons/lesson-5-redis-refresh-tokens.md)
+- [Lesson 6 — Feed caching, a leaderboard, and a fix we didn't need](docs/lessons/lesson-6-feed-cache-and-trending.md)
 
 **Technical reference** (`docs/tech/`) — current-state reference docs, not a
 story:
@@ -243,7 +245,7 @@ story:
 - [Architecture & flows](docs/tech/architecture-flows.md) — every service
   (ours and third-party), the libraries each of ours uses, and diagrams for
   key request/event flows (login, create-post → notification, media upload/
-  re-crop/delete).
+  re-crop/delete, feed cache, trending).
 - [Database schema](docs/tech/db-schema.md) — ER diagrams and table reference
   for all three databases (Core's Postgres, Notification's Postgres, Media's MongoDB).
 
@@ -265,5 +267,14 @@ story:
 - [x] Media extracted into its own service (`services/media`, Express +
       MongoDB) — a deliberately different stack from the two Spring Boot
       services; Core keeps only an opaque id + denormalized url/crop snapshot
-- [ ] Redis caching (feeds), and pub/sub for realtime once Notification runs
-      on more than one instance
+- [x] `FOLLOW` / `POST_LIKED` notifications, riding the existing RabbitMQ
+      pipe (`NEW_POST`/`COMMENT_REPLY`'s track)
+- [x] Redis feed cache — caches which posts belong on a page, never
+      per-user data (likes/counts stay live on every request)
+- [x] Trending posts leaderboard (Redis sorted set, `GET /api/v1/posts/trending`)
+      — backend only; no frontend UI surfaces it yet
+- [ ] Multi-instance realtime fan-out (Redis pub/sub) — built, then
+      reverted: Notification runs as a single instance in production with
+      no plan to change that, so the bug it fixes can't occur. Design kept
+      in [Lesson 6](docs/lessons/lesson-6-feed-cache-and-trending.md) §4 for
+      if that ever changes.

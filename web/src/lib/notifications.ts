@@ -8,7 +8,7 @@ import { apiFetch } from "./api";
 import { NOTIFICATION_API_URL } from "./config";
 import type { Page } from "./collections";
 
-export type NotificationType = "NEW_POST" | "COMMENT_REPLY";
+export type NotificationType = "NEW_POST" | "COMMENT_REPLY" | "FOLLOW" | "POST_LIKED";
 
 export type Notification = {
   id: string;

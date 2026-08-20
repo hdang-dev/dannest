@@ -97,11 +97,19 @@ public class NotificationService {
         return switch (n.getType()) {
             case NEW_POST -> "added a new post to \"" + n.getCollectionName() + "\"";
             case COMMENT_REPLY -> "replied to your comment";
+            case FOLLOW -> "started following \"" + n.getCollectionName() + "\"";
+            case POST_LIKED -> "liked your post";
         };
     }
 
-    /** Deep-links to the post (and, for a reply, the specific comment) so the UI can focus it. */
+    /**
+     * Deep-links to the post (and, for a reply, the specific comment) so the UI can focus it.
+     * {@link NotificationType#FOLLOW} has no post — links to the collection itself.
+     */
     private static String targetUrl(Notification n) {
+        if (n.getPostId() == null) {
+            return "/collections/" + n.getCollectionId();
+        }
         String url = "/collections/" + n.getCollectionId() + "?post=" + n.getPostId();
         if (n.getCommentId() != null) {
             url += "&comment=" + n.getCommentId();

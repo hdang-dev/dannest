@@ -6,6 +6,7 @@ import com.dannest.post.dto.PostResponse;
 import com.dannest.post.dto.UpdatePostRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +53,17 @@ public class PostController {
             @RequestParam(required = false) String q,
             Pageable pageable) {
         return postService.list(currentUserId(jwt), null, collectionId, q, pageable);
+    }
+
+    /**
+     * The top-ranked posts by recent like/comment activity (see {@link TrendingScoreService}).
+     * A literal path segment always wins over {@code /posts/{id}}'s path variable, so no
+     * route conflict.
+     */
+    @GetMapping("/posts/trending")
+    public List<PostResponse> trending(
+            @AuthenticationPrincipal Jwt jwt, @RequestParam(defaultValue = "10") int limit) {
+        return postService.listTrending(currentUserId(jwt), limit);
     }
 
     /** A single post — visible if its collection is public or owned by the caller. */

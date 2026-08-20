@@ -45,7 +45,8 @@ public class Notification extends BaseEntity {
     @Column(name = "collection_name", nullable = false, length = 100)
     private String collectionName;
 
-    @Column(name = "post_id", nullable = false)
+    /** Null for event types with no post, e.g. {@link NotificationType#FOLLOW}. */
+    @Column(name = "post_id")
     private UUID postId;
 
     @Column(name = "comment_id")
