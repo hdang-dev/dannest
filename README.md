@@ -271,8 +271,9 @@ story:
       pipe (`NEW_POST`/`COMMENT_REPLY`'s track)
 - [x] Redis feed cache — caches which posts belong on a page, never
       per-user data (likes/counts stay live on every request)
-- [x] Trending posts leaderboard (Redis sorted set, `GET /api/v1/posts/trending`)
-      — backend only; no frontend UI surfaces it yet
+- [x] Trending posts leaderboard (Redis sorted set, `GET /api/v1/posts/trending`),
+      its own `/trending` page — a deliberately separate surface from the home
+      feed, which stays newest-first and unaffected by likes/comments
 - [ ] Multi-instance realtime fan-out (Redis pub/sub) — built, then
       reverted: Notification runs as a single instance in production with
       no plan to change that, so the bug it fixes can't occur. Design kept

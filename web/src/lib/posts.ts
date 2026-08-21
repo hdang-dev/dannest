@@ -66,6 +66,11 @@ export function listFeed(params: ListParams = {}) {
   );
 }
 
+/** GET /api/v1/posts/trending — top-ranked posts by recent like/comment activity (Redis ZSET). */
+export function listTrending(limit?: number) {
+  return apiFetch<Post[]>(`/api/v1/posts/trending${query({ limit })}`);
+}
+
 /** GET /api/v1/collections/{id}/posts — every post in one collection. */
 export function listByCollection(collectionId: string, params: ListParams = {}) {
   return apiFetch<Page<Post>>(`/api/v1/collections/${collectionId}/posts${query({ ...params })}`);
