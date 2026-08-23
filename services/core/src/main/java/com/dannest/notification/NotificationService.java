@@ -53,4 +53,29 @@ public class NotificationService {
                 commentId,
                 Instant.now()));
     }
+
+    /**
+     * Publish a record of something the caller themselves did — unconditional, no self-check
+     * (unlike {@link #notify}, there's no "recipient" to suppress). {@code recipientId} is set
+     * to {@code actorId} since the event has no other recipient concept; the activity log
+     * consumer ignores it and keys everything off {@code actorId} instead.
+     */
+    public void publishActivity(UUID actorId, ActivityType type, UUID collectionId, UUID postId, UUID commentId) {
+        User actor = userRepository.findById(actorId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + actorId));
+        Collection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
+
+        eventPublisher.publish(new DannestEvent(
+                "ACTIVITY_" + type.name(),
+                actorId,
+                actorId,
+                actor.getUsername(),
+                actor.getAvatarUrl(),
+                collectionId,
+                collection.getName(),
+                postId,
+                commentId,
+                Instant.now()));
+    }
 }

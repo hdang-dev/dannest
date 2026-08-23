@@ -10,6 +10,7 @@ import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.follow.CollectionFollowRepository;
+import com.dannest.notification.ActivityType;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.dto.CreatePostRequest;
@@ -89,6 +90,7 @@ public class PostService {
                 .build());
         attachMedia(post, request.images());
         notifyFollowers(userId, collection, post);
+        notificationService.publishActivity(userId, ActivityType.POST_CREATED, collection.getId(), post.getId(), null);
         evictFeedCache();
         return toResponse(post, userId);
     }
@@ -283,6 +285,10 @@ public class PostService {
             notificationService.notify(
                     post.getAuthorId(), userId, NotificationType.POST_LIKED,
                     post.getCollectionId(), post.getId(), null);
+            // Unlike notify() above, this fires even for a self-like — "I liked this" is true
+            // regardless of who else should be told about it.
+            notificationService.publishActivity(
+                    userId, ActivityType.POST_LIKED, post.getCollectionId(), post.getId(), null);
             trendingScoreService.incrementLike(post.getId());
         }
     }

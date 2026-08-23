@@ -1,7 +1,9 @@
 package com.dannest.config;
 
+import java.util.List;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper.TypePrecedence;
@@ -11,15 +13,29 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Declares this service's queue against Core's {@code dannest.events} exchange (properties
- * must match Core's declaration or RabbitMQ rejects it) and binds it to every event type —
- * a {@code #} wildcard, since this is currently the only consumer and cares about all of them.
+ * Declares this service's queues against Core's {@code dannest.events} exchange (properties
+ * must match Core's declaration or RabbitMQ rejects it).
+ *
+ * <p>Two independent consumers share this one exchange, each bound to only the routing keys
+ * it understands — the exact scenario a topic exchange is for. The notification queue binds
+ * explicitly to the four {@code NotificationType} values (used to bind {@code #} back when
+ * it was the only consumer) — explicit, not wildcard, because Core also publishes
+ * {@code ACTIVITY_*}-prefixed events now, and {@code EventConsumer} would throw on one of
+ * those ({@code NotificationType.valueOf("ACTIVITY_POST_CREATED")}) — which, left unguarded,
+ * means Spring AMQP's default requeue-on-exception behavior turns into an infinite redelivery
+ * loop. The activity queue binds the other way — only the {@code ACTIVITY_*} keys.
  */
 @Configuration
 public class RabbitConfig {
 
     private static final String EVENTS_EXCHANGE = "dannest.events";
-    private static final String QUEUE = "notification.events";
+    private static final String NOTIFICATION_QUEUE = "notification.events";
+    private static final String ACTIVITY_QUEUE = "activity.events";
+
+    private static final List<String> NOTIFICATION_ROUTING_KEYS =
+            List.of("NEW_POST", "COMMENT_REPLY", "FOLLOW", "POST_LIKED");
+    private static final List<String> ACTIVITY_ROUTING_KEYS = List.of(
+            "ACTIVITY_POST_CREATED", "ACTIVITY_COMMENT_CREATED", "ACTIVITY_POST_LIKED", "ACTIVITY_COLLECTION_FOLLOWED");
 
     @Bean
     TopicExchange eventsExchange() {
@@ -28,12 +44,33 @@ public class RabbitConfig {
 
     @Bean
     Queue notificationQueue() {
-        return new Queue(QUEUE, true);
+        return new Queue(NOTIFICATION_QUEUE, true);
+    }
+
+    /**
+     * {@link Declarables}, not a bare {@code List<Binding>} — {@code RabbitAdmin}'s
+     * auto-declaration only picks up {@code Declarable} beans (a plain {@code List} bean
+     * would silently never get declared against the broker).
+     */
+    @Bean
+    Declarables notificationBindings(Queue notificationQueue, TopicExchange eventsExchange) {
+        List<Binding> bindings = NOTIFICATION_ROUTING_KEYS.stream()
+                .map(key -> BindingBuilder.bind(notificationQueue).to(eventsExchange).with(key))
+                .toList();
+        return new Declarables(bindings);
     }
 
     @Bean
-    Binding notificationBinding(Queue notificationQueue, TopicExchange eventsExchange) {
-        return BindingBuilder.bind(notificationQueue).to(eventsExchange).with("#");
+    Queue activityQueue() {
+        return new Queue(ACTIVITY_QUEUE, true);
+    }
+
+    @Bean
+    Declarables activityBindings(Queue activityQueue, TopicExchange eventsExchange) {
+        List<Binding> bindings = ACTIVITY_ROUTING_KEYS.stream()
+                .map(key -> BindingBuilder.bind(activityQueue).to(eventsExchange).with(key))
+                .toList();
+        return new Declarables(bindings);
     }
 
     /**

@@ -8,6 +8,7 @@ import com.dannest.collection.dto.CollectionResponse;
 import com.dannest.common.BadRequestException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.notification.ActivityType;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import java.util.List;
@@ -47,6 +48,8 @@ public class FollowService {
                     .build());
             notificationService.notify(
                     collection.getOwnerId(), userId, NotificationType.FOLLOW, collectionId, null, null);
+            notificationService.publishActivity(
+                    userId, ActivityType.COLLECTION_FOLLOWED, collectionId, null, null);
         }
     }
 

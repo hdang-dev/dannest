@@ -11,6 +11,7 @@ import com.dannest.common.CropDto;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.notification.ActivityType;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.Post;
@@ -88,6 +89,10 @@ public class CommentService {
                     parent.getAuthorId(), userId, NotificationType.COMMENT_REPLY,
                     post.getCollectionId(), postId, comment.getId());
         }
+        // Unconditional — unlike notify() above, this fires for a top-level comment too
+        // (which never notifies anyone), since "I commented" is true either way.
+        notificationService.publishActivity(
+                userId, ActivityType.COMMENT_CREATED, post.getCollectionId(), postId, comment.getId());
         trendingScoreService.incrementComment(postId);
         return toResponse(comment);
     }
