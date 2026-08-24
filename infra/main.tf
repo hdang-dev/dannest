@@ -11,6 +11,19 @@
 #  `terraform apply`. That direct-API path isn't subject to the same
 #  rejection. Keep this file in sync regardless, so `terraform plan` always
 #  reflects reality.
+#
+#  NOTE (image-based deploys, added when CI/CD moved to GHCR): the four
+#  services below are switched, out-of-band via the Render dashboard/API, to
+#  deploy a prebuilt image from GHCR (ghcr.io/<owner>/<service>:<sha>) instead
+#  of building from the `runtime_source` blocks declared here. Those blocks
+#  are left as-is rather than rewritten to an `image` variant because
+#  `runtime_source` looks like a union/oneOf type in this provider — swapping
+#  its shape (docker/native_runtime -> image) is untested here and could mean
+#  `terraform apply` tries to destroy+recreate the service instead of
+#  updating it in place. Don't run `terraform apply` on these four resources
+#  without first confirming (in a scratch/test project) whether the provider
+#  treats that change as an in-place update or a replacement. See
+#  docs/lessons/lesson-2-cicd.md §9 for how the deploy flow actually works now.
 # =============================================================================
 
 # The two live URLs reference each other (CORS needs the web URL; the web app

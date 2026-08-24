@@ -28,7 +28,8 @@ only — which libraries do the work.
 | **Upstash** | Managed Redis. Used only by Core: refresh tokens (revocable sessions), the public feed's page cache, and the trending-posts sorted set. Notification does **not** use Redis — see [Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md) §4 for why a Redis-backed fix there was built and then deliberately reverted. |
 | **Cloudflare R2** | S3-compatible object storage. Used only by services/media, to store uploaded media (images). |
 | **Render** | PaaS hosting for all four of our services (web, core, notification, media). Runs health checks, serves the live URLs. |
-| **GitHub Actions** | CI/CD. On every push, checks the code and deploys whichever service(s) changed. |
+| **GitHub Actions** | CI/CD. On every push, checks whichever service(s) changed, builds a Docker image, pushes it to GHCR, then tells Render to deploy that exact image. |
+| **GHCR** | GitHub Container Registry. Holds the Docker images GitHub Actions builds, tagged by commit SHA — Render only ever pulls from here, it never builds from source. |
 | **Terraform** | Infrastructure-as-code tool (not a runtime service) that defines the Render resources above declaratively, in [infra/main.tf](../../infra/main.tf). |
 
 ### How they interact
@@ -48,6 +49,7 @@ flowchart TD
     NeonNotif[("Neon Postgres #2\nnotification DB")]
     Render["Render"]
     GHA["GitHub Actions"]
+    GHCR[("GHCR\n(Docker images)")]
     TF["Terraform"]
 
     Google -- "ID token (login only)" --> Web
@@ -62,7 +64,9 @@ flowchart TD
     Media --> Mongo
     Media --> R2
     Notif --> NeonNotif
-    GHA -- "deploys" --> Render
+    GHA -- "build + push image" --> GHCR
+    GHA -- "deploy exact image" --> Render
+    Render -- "pulls image" --> GHCR
     TF -- "provisioned" --> Render
     Render -. hosts .-> Web
     Render -. hosts .-> Core
@@ -91,7 +95,7 @@ Plain-English version:
 6. Whenever something notification-worthy happens, **core** publishes an event to **CloudAMQP** (RabbitMQ). It doesn't know or care who's listening.
 7. **notification** consumes that event, saves it to its own **Neon** Postgres, and pushes it live to **web** over a WebSocket.
 8. **core**, **notification**, and **media** never call each other directly and never share a database.
-9. All four of our services are hosted on **Render**; **GitHub Actions** deploys them on every push; **Terraform** is what originally provisioned them on Render.
+9. All four of our services are hosted on **Render**; **GitHub Actions** builds and pushes a Docker image to **GHCR** on every push, then tells Render to deploy that exact image; **Terraform** is what originally provisioned the services on Render.
 
 ---
 

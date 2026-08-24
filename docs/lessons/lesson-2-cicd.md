@@ -45,16 +45,25 @@ needs a **home** (Render / Neon) to live in. The robot checks the code, then
 you push code to main
    │
    ▼
-🤖 GitHub Actions:
-     ├─ check web/     (install → lint → build the Next.js app)
-     ├─ check service/ (build + test the Spring Boot app,
-     │                  using a throwaway Postgres just for the test)
+🤖 GitHub Actions (CI):
+     ├─ check web/                (install → lint → build the Next.js app)
+     ├─ check service/            (build + test the Spring Boot app,
+     │                             using a throwaway Postgres just for the test)
      │
-     └─ if the checks pass → tell Render to redeploy
+     └─ if the checks pass → build a Docker image → push it to GHCR,
+        tagged with the commit SHA (ghcr.io/<owner>/<service>:<sha>)
    │
    ▼
-app is live 🎉
+🤖 GitHub Actions (CD):
+     └─ tell Render: "run exactly this image" (one API call, imageUrl=<sha tag>)
+   │
+   ▼
+app is live 🎉  (running the same image bytes CI just built and tested)
 ```
+
+We package the app **once**, as a Docker image, and that same image is what
+gets tested (implicitly, by being built from the same source the checks just
+passed) and what runs in production. Nothing rebuilds on Render's side.
 
 ## 5. Deploy only what changed (path filters)
 
@@ -92,6 +101,12 @@ running one command by hand a few times is simpler. Infra changes are rare.
 | DB password, API keys (for Terraform) | `infra/terraform.tfvars` | ❌ gitignored |
 | Render API key (for the robot) | GitHub **Secrets** | ❌ encrypted |
 | DB creds (for the running app) | Render **env vars** | ❌ not in code |
+| GHCR push auth | GitHub's built-in `GITHUB_TOKEN` | n/a — auto-issued per run, never stored |
+
+No new secret was needed to push images to GHCR — every workflow run already
+gets a short-lived `GITHUB_TOKEN`, and granting the job `packages: write`
+permission (in `deploy.yml`) is enough for it to push. Our GHCR packages are
+public, so Render doesn't need any credential to pull them either.
 
 The **only** "secrets" in the repo are *fake* ones — the throwaway test
 database's password (`dannest/dannest`) in the workflow. That database is
@@ -118,20 +133,38 @@ IaC; Terraform is the powerful, works-anywhere one.
 
 Not all hosts work the same. There are **two models**:
 
-- **Smart host** (Render, Vercel, Netlify) — you send a "deploy now" **signal**,
-  and the host pulls your code from GitHub, builds it, and runs it. Your robot's
-  deploy step is tiny (one API call).
-- **Dumb runner** (AWS, Kubernetes) — the host does **not** know your GitHub.
-  Your robot does the work: build a Docker image → push it to a registry →
-  tell the host to run that image.
+- **Smart host, build-from-source** — you send a "deploy now" **signal**, and
+  the host pulls your code from GitHub, builds it, and runs it. Your robot's
+  deploy step is tiny (one API call), but the host is doing a build every
+  time, from whatever the branch currently points at.
+- **Dumb runner, run-a-prebuilt-image** — the host does **not** build
+  anything. Your robot does that work: build a Docker image → push it to a
+  registry (GHCR) → tell the host to run *that exact image*.
 
 ```
-Render → smart host → robot just says "go"          (thin robot)
-AWS    → dumb runner → robot builds + ships + runs    (fat robot)
+Render, build-from-source → robot just says "go"              (thin robot)
+Render, run-a-prebuilt-image → robot builds + ships + says "run this one"  (fat robot)
 ```
 
-The more the host does for you, the less your robot does. We use **Render**
-(smart host), so our deploy step is a single `curl` that says "deploy now."
+We use Render, but not as a smart host anymore — Render's job is now only to
+**run** a container, never to build one. GitHub Actions does the building
+(the "fat robot"), pushes the image to **GHCR** (GitHub Container Registry),
+and the deploy step tells Render exactly which image tag to run:
+
+```yaml
+# deploy step, e.g. deploy-web
+run: |
+  curl -X POST ... \
+    -d '{"imageUrl":"ghcr.io/<owner>/web:<commit-sha>"}' \
+    ".../services/<id>/deploys"
+```
+
+Why bother, if Render *could* build for us? Because "build on the host" means
+the exact bytes running in production are whatever Render's build happened to
+produce at deploy time — you can't point at them, diff them, or re-run the
+exact same one later. An image tagged with the commit SHA is a fixed,
+addressable artifact: the thing CI tested and the thing running in
+production are provably the same bytes.
 
 ## 10. Why we trigger deploy from the robot (gating)
 
@@ -153,22 +186,58 @@ deploy-web:
 This is called **gating**: *CI gates CD.* It's the professional pattern — a
 little more setup, but broken code never reaches production.
 
-## 11. What you achieved ✅
+## 11. What happens when something fails (and rolling back)
 
-- App **live in production**: web + backend + Neon database.
+"CI/CD fails" can mean three different things — they're handled differently,
+and **registry visibility (public/private) has nothing to do with any of them**:
+
+1. **Checks or the Docker build fail** — nothing gets pushed to GHCR, and the
+   deploy job never runs (it `needs:` the build job, and a failed/skipped
+   dependency skips downstream jobs too). Render is never contacted. Whatever
+   was already live keeps running, untouched.
+2. **The new image gets deployed but fails to start / fails its health
+   check** — Render itself cancels that deploy and keeps the previous
+   instance running. This is automatic, built into Render, and applies the
+   same way to image-backed services as git-built ones — you don't have to
+   build this yourself.
+3. **The new image deploys fine and passes health checks, but has a real bug
+   health checks don't catch** — this is the one case nothing catches for
+   you. That's what `rollback.yml` is for: pick the service and a previous
+   `deploy_id` (Render dashboard -> service -> Events tab), and it calls
+   Render's `POST /services/{id}/rollback` endpoint, which re-pulls the exact
+   image that earlier deploy used and restores its start command / health
+   check / env vars.
+
+Rollback only works reliably because every image is tagged with the
+**immutable commit SHA**, never `latest`. Render's own docs warn that rolling
+back a *mutable*-tag deploy can pull whatever that tag currently points to —
+not what was actually running back then. Our tags never get overwritten, so
+this can't happen. It also means: **if you ever add a GHCR cleanup/retention
+job, don't delete the SHA tag for any deploy you might still want to roll
+back to** — a deleted image makes that rollback fail.
+
+All four services have `auto_deploy = false` in Terraform, so there's no risk
+of an autodeploy silently undoing a rollback (a footgun Render's docs flag
+for services where autodeploy is on).
+
+## 12. What you achieved ✅
+
+- App **live in production**: web + 3 backends + Neon/Mongo databases.
 - **Infrastructure as Code** (Terraform creates the Render services).
-- **A CI/CD robot** that checks both apps and deploys **only what changed**.
+- **A CI/CD robot** that checks each app, packages it as a Docker image, and
+  deploys **only what changed** — the exact image it just built and tested.
 - Secrets handled the right way (never committed).
 
 ## Cheat sheet 📇
 
 | What you change | What happens |
 | --- | --- |
-| Frontend code (`web/`) | push → web redeploys |
-| Backend code (`service/`) | push → backend redeploys |
-| Database schema | add `service/src/main/resources/db/migration/V#__*.sql` → push → Flyway applies it on deploy |
-| New env var | edit `infra/main.tf` → run `terraform apply` (manual) |
+| Frontend code (`web/`) | push → web checked → image built → pushed to GHCR → Render runs it |
+| A backend's code (`services/*/`) | push → that service checked → image built → pushed to GHCR → Render runs it |
+| Database schema | add `services/*/src/main/resources/db/migration/V#__*.sql` → push → Flyway applies it on container startup |
+| New env var | edit `infra/main.tf` → run `terraform apply` (manual, only works for *new* services on free tier — see README) |
 | Infra (Render service settings) | edit `infra/*.tf` → run `terraform apply` (manual) |
+| Switching a service's image source/registry credential | Render dashboard or REST API — Terraform doesn't manage this on existing free-tier services (manual, one-time) |
 
 ## Key words
 
@@ -176,9 +245,11 @@ little more setup, but broken code never reaches production.
 - **Pipeline** — the robot's list of steps (in `deploy.yml`).
 - **GitHub Actions** — GitHub's robot that runs the pipeline.
 - **Docker / Dockerfile** — a recipe to package an app into a runnable image.
+- **GHCR** — GitHub Container Registry; where CI pushes the images it builds, and where Render pulls them from.
+- **Image tag** — a label pointing at one specific image; we tag with the commit SHA so the tag is a fixed, addressable artifact, not a moving target.
 - **Host** — where an app runs live (Render, Neon).
 - **IaC (Infrastructure as Code)** — your servers described in a file (Terraform).
 - **State** — Terraform's memory of what it built (`terraform.tfstate`).
 - **Secret** — a sensitive value (password, key) kept out of Git.
-- **Path filter** — deploy only the folder that changed.
+- **Path filter** — only process the service whose folder changed.
 - **Migration** — a versioned SQL file that changes the database schema.

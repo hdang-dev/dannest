@@ -1,0 +1,45 @@
+name: rollback
+
+# Manual, on-demand rollback for one service to a previous deploy.
+#
+# Find the target deploy_id first: Render dashboard -> service -> Events tab
+# (each past deploy has an id starting with "dep-"), or GET
+# /v1/services/{serviceId}/deploys with your RENDER_API_KEY.
+#
+# This calls Render's dedicated rollback endpoint (not create-deploy): it
+# re-pulls the EXACT image tag that deploy used and restores that deploy's
+# start command / health check path / env vars. Safe to use because every
+# image we build is tagged with an immutable commit SHA (never overwritten),
+# so "the exact image that deploy used" always still exists in GHCR unless
+# it's been manually deleted.
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to roll back
+        required: true
+        type: choice
+        options: [web, core, notification, media]
+      deploy_id:
+        description: Render deploy id to roll back to (e.g. dep-xxxxxxxxxxxx)
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll back
+        run: |
+          case "${{ inputs.service }}" in
+            web)          service_id=srv-d955uk3tqb8s73eer9bg ;;
+            core)         service_id=srv-d955uk0js32c73ffde7g ;;
+            notification) service_id=srv-d9mqrofqj5pc73dk07k0 ;;
+            media)        service_id=srv-da2s5jr7uimc73bagnl0 ;;
+          esac
+
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"deployId":"${{ inputs.deploy_id }}"}' \
+            "https://api.render.com/v1/services/$service_id/rollback"

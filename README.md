@@ -208,16 +208,23 @@ with two **Neon** Postgres databases (one per Spring Boot backend), one
 
 - **Infrastructure as Code** — the Render services are defined in `infra/*.tf`
   (Terraform). Run `terraform apply` from `infra/` to create new ones.
-- **CI/CD** — `.github/workflows/deploy.yml` runs on every push to `main`: it
-  checks the changed service (build + test) and, only if green, triggers a
-  Render deploy. Path filters mean **only the service that changed** is
-  redeployed.
+- **CI/CD** — `.github/workflows/deploy.yml` runs on every push to `main`: for
+  each changed service it checks (build + test), then builds a Docker image
+  and pushes it to **GHCR** (`ghcr.io/<owner>/<service>:<git-sha>`) — only if
+  the checks passed — then tells Render to deploy that exact image. Render
+  never builds from source; it only pulls and runs the image GitHub Actions
+  built. Path filters mean **only the service that changed** goes through
+  this.
 - **Free-tier gotcha** — `terraform apply` can only *create* new Render
-  services; it can't push config changes (env vars, build settings) to a
-  service that already exists on the free plan. Those updates go through
-  Render's REST API directly instead. See
+  services; it can't push config changes (env vars, build settings, or the
+  git-build → image-deploy switch) to a service that already exists on the
+  free plan. Those updates go through Render's REST API or dashboard
+  directly instead. See
   [Lesson 4, section 5](docs/lessons/lesson-4-microservices.md#5-the-re-apply-gotcha-the-part-that-actually-broke)
   for the full story — it's a real incident this project hit.
+- **Rollback** — `.github/workflows/rollback.yml` (manual `workflow_dispatch`)
+  rolls one service back to a previous deploy via Render's rollback API. Safe
+  because every image is tagged with an immutable commit SHA, never `latest`.
 
 See [`docs/lessons/lesson-2-cicd.md`](docs/lessons/lesson-2-cicd.md) for a
 full, beginner-friendly explanation of the pipeline itself, and
