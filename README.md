@@ -1,6 +1,29 @@
 # DanNest
 
-A small social media / collection website — built as a learning project.
+![Next.js](https://img.shields.io/badge/Next.js-000000?logo=next.js&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?logo=spring-boot&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
+![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?logo=rabbitmq&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)
+
+A full-stack social media platform, built solo from scratch as a deep dive
+into production-style backend architecture — microservices, event-driven
+notifications, caching, and infrastructure-as-code — not just another CRUD
+tutorial app.
+
+**Live demo:** https://dannest-punh.onrender.com/ — *currently suspended, Render free-tier usage cap, resets in a few days.*
+
+## Highlights
+
+- **Microservices with a real reason, not resume-driven design** — three independently deployable services (2× Spring Boot, 1× Express), each owning its own database, talking only through an event bus or client-side composition — never a direct backend-to-backend call.
+- **Event-driven notifications** — the core service publishes domain events to RabbitMQ; a dedicated notification service consumes them and pushes updates live over WebSocket (STOMP).
+- **Caching that's load-bearing, not decorative** — Redis-backed feed pagination cache plus a sorted-set trending leaderboard, both serving real read traffic.
+- **Deployed for real, not just running on localhost** — Terraform-provisioned infrastructure on Render, GitHub Actions CI/CD building per-service Docker images to GHCR, SHA-pinned deploys with one-click rollback.
+- **Documented like production software** — every non-obvious decision (including a real production incident and its fix) is written up in [docs/lessons](docs/lessons/) instead of left implicit in code.
 
 Monorepo containing a **Next.js** web app, two **Spring Boot** microservices,
 and one **Express/TypeScript** microservice — backed by **PostgreSQL** (one
