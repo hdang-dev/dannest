@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * {@code avatarUrl}/{@code avatarCrop} are sourced only from the user's own denormalized
- * {@code avatarMediaUrl}/{@code avatarCrop} snapshot (see services/media) — never from the
+ * {@code avatarMediaUrl}/{@code avatarCrop} snapshot — never from the
  * legacy OAuth {@code avatarUrl} string, which is provider bookkeeping, not the profile photo.
  */
 public record UserResponse(UUID id, String username, String email, String avatarUrl, CropDto avatarCrop) {

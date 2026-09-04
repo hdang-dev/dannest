@@ -200,8 +200,8 @@ public class CollectionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
     }
 
-    /** Stores the cover reference plus the url/crop snapshot the caller sent (services/media
-     * already enforced ownership when it issued that media id — see media-split notes). */
+    /** Stores the cover reference plus the url/crop snapshot the caller sent — copied
+     * verbatim, no lookup against {@code media}. */
     private void applyCover(Collection collection, String mediaId, String url, com.dannest.common.CropDto crop) {
         if (url == null || url.isBlank()) {
             throw new BadRequestException("coverUrl is required when setting coverMediaId");

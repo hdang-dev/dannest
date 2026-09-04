@@ -10,8 +10,8 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code visibility} defaults to PUBLIC when omitted. The optional cover is a media
  * asset ({@code coverMediaId}) the caller owns — {@code coverUrl}/{@code coverCrop} must
- * be sent alongside it (the values services/media returned for that id), since Core no
- * longer looks media up itself.
+ * be sent alongside it (the values the {@code POST /api/v1/media} response returned for
+ * that id); reads use that snapshot, not a live {@code media} lookup.
  */
 public record CreateCollectionRequest(
         @NotBlank @Size(max = 120) String name,

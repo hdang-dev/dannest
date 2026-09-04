@@ -12,7 +12,7 @@
 #  rejection. Keep this file in sync regardless, so `terraform plan` always
 #  reflects reality.
 #
-#  NOTE (image-based deploys, added when CI/CD moved to GHCR): the four
+#  NOTE (image-based deploys, added when CI/CD moved to GHCR): the three
 #  services below are switched, out-of-band via the Render dashboard/API, to
 #  deploy a prebuilt image from GHCR (ghcr.io/<owner>/<service>:<sha>) instead
 #  of building from the `runtime_source` blocks declared here. Those blocks
@@ -20,7 +20,7 @@
 #  `runtime_source` looks like a union/oneOf type in this provider — swapping
 #  its shape (docker/native_runtime -> image) is untested here and could mean
 #  `terraform apply` tries to destroy+recreate the service instead of
-#  updating it in place. Don't run `terraform apply` on these four resources
+#  updating it in place. Don't run `terraform apply` on these three resources
 #  without first confirming (in a scratch/test project) whether the provider
 #  treats that change as an in-place update or a replacement. See
 #  docs/lessons/lesson-2-cicd.md §9 for how the deploy flow actually works now.
@@ -33,7 +33,6 @@ locals {
   web_url          = "https://dannest-punh.onrender.com"
   backend_url      = "https://dannest-service-jauh.onrender.com"
   notification_url = "https://dannest-notification.onrender.com"
-  media_url        = "https://dannest-media.onrender.com"
 }
 
 # ---- Backend API (Core): Docker service built from services/core/Dockerfile ----
@@ -76,8 +75,13 @@ resource "render_web_service" "backend" {
     REDIS_PASSWORD    = { value = var.redis_password }
     REDIS_SSL_ENABLED = { value = "true" }
 
-    # Object storage (Cloudflare R2) moved to services/media — Core no longer
-    # uploads bytes or talks to R2 directly (see docs/tech/architecture-flows.md).
+    # Object storage (Cloudflare R2) — media uploads. R2 speaks the S3 protocol;
+    # Core uses the AWS S3 SDK pointed at R2's endpoint (see services/core/.../media).
+    R2_ACCOUNT_ID      = { value = var.r2_account_id }
+    R2_ACCESS_KEY      = { value = var.r2_access_key }
+    R2_SECRET_KEY      = { value = var.r2_secret_key }
+    R2_BUCKET          = { value = var.r2_bucket }
+    R2_PUBLIC_BASE_URL = { value = var.r2_public_base_url }
 
     # Message broker (RabbitMQ / CloudAMQP) — publishes domain events for the
     # notification service to consume. Port 5671 + SSL is CloudAMQP's TLS port.
@@ -127,40 +131,6 @@ resource "render_web_service" "notification" {
   }
 }
 
-# ---- Media service: Docker service built from services/media/Dockerfile ----
-resource "render_web_service" "media" {
-  name   = "dannest-media"
-  plan   = "free"
-  region = "virginia"
-
-  runtime_source = {
-    docker = {
-      repo_url        = var.repo_url
-      branch          = "main"
-      dockerfile_path = "./services/media/Dockerfile"
-      context         = "./services/media"
-      auto_deploy     = false # GitHub Actions (the robot) will trigger deploys
-    }
-  }
-
-  health_check_path = "/healthz"
-
-  env_vars = {
-    MONGO_URI = { value = var.mongo_uri }
-
-    # Must match Core's JWT_SECRET exactly — this service verifies tokens Core issues.
-    JWT_SECRET           = { value = var.jwt_secret }
-    CORS_ALLOWED_ORIGINS = { value = local.web_url }
-
-    # Object storage (Cloudflare R2) — media uploads. Same bucket Core used pre-split.
-    R2_ACCOUNT_ID      = { value = var.r2_account_id }
-    R2_ACCESS_KEY      = { value = var.r2_access_key }
-    R2_SECRET_KEY      = { value = var.r2_secret_key }
-    R2_BUCKET          = { value = var.r2_bucket }
-    R2_PUBLIC_BASE_URL = { value = var.r2_public_base_url }
-  }
-}
-
 # ---- Web frontend: Next.js run as a Node service ----
 resource "render_web_service" "web" {
   name   = "dannest"
@@ -187,7 +157,6 @@ resource "render_web_service" "web" {
     NEXT_PUBLIC_GOOGLE_CLIENT_ID     = { value = var.google_client_id }
     NEXT_PUBLIC_API_URL              = { value = local.backend_url }
     NEXT_PUBLIC_NOTIFICATION_API_URL = { value = local.notification_url }
-    NEXT_PUBLIC_MEDIA_API_URL        = { value = local.media_url }
   }
 }
 
@@ -202,8 +171,4 @@ output "web_url" {
 
 output "notification_url" {
   value = render_web_service.notification.url
-}
-
-output "media_url" {
-  value = render_web_service.media.url
 }

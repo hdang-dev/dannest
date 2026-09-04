@@ -8,8 +8,9 @@ import jakarta.validation.constraints.Size;
  *
  * <p>Every field is optional: a {@code null} field leaves the current value untouched.
  * Setting {@code avatarMediaId} replaces the avatar — the caller must also send
- * {@code avatarMediaUrl}/{@code avatarCrop} (the values services/media just returned for
- * that id), since Core no longer looks media up itself. {@code clearAvatar=true} removes it.
+ * {@code avatarMediaUrl}/{@code avatarCrop} (the values the {@code POST /api/v1/media}
+ * response returned for that id) — reads use the snapshot, not a live {@code media}
+ * lookup. {@code clearAvatar=true} removes it.
  */
 public record UpdateUserRequest(
         @Size(max = 50) String username,

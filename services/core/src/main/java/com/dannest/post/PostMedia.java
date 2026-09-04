@@ -29,13 +29,13 @@ public class PostMedia extends BaseEntity {
     @Column(name = "post_id", nullable = false)
     private UUID postId;
 
-    /** Opaque reference into services/media (a Mongo ObjectId, not a UUID) — no FK,
-     * that service owns the asset's lifecycle. */
+    /** Reference to a {@code media} row's id — no FK (varchar(64): historically held
+     * Mongo ObjectIds; new rows are UUIDs). See {@link com.dannest.media.Media}. */
     @Column(name = "media_id", nullable = false)
     private String mediaId;
 
-    /** Denormalized snapshot of the media service's url/crop, copied at write time
-     * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */
+    /** Denormalized snapshot of the media row's url/crop, copied at write time
+     * (see docs/tech/db-schema.md's *Image crop* notes). Never live-resolved. */
     @Column(nullable = false, length = 1024)
     private String url;
 

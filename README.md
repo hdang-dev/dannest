@@ -2,9 +2,7 @@
 
 ![Next.js](https://img.shields.io/badge/Next.js-000000?logo=next.js&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?logo=spring-boot&logoColor=white)
-![Express](https://img.shields.io/badge/Express-000000?logo=express&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?logo=rabbitmq&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
@@ -19,15 +17,14 @@ tutorial app.
 
 ## Highlights
 
-- **Microservices with a real reason, not resume-driven design** — three independently deployable services (2× Spring Boot, 1× Express), each owning its own database, talking only through an event bus or client-side composition — never a direct backend-to-backend call.
+- **Microservices with a real reason, not resume-driven design** — two independently deployable Spring Boot services, each owning its own database, talking only through an event bus — never a direct backend-to-backend call. (A third service, media, was split out and later folded back in — [Lesson 7](docs/lessons/lesson-7-remerging-media.md) — because the split stopped paying for itself.)
 - **Event-driven notifications** — the core service publishes domain events to RabbitMQ; a dedicated notification service consumes them and pushes updates live over WebSocket (STOMP).
 - **Caching that's load-bearing, not decorative** — Redis-backed feed pagination cache plus a sorted-set trending leaderboard, both serving real read traffic.
 - **Deployed for real, not just running on localhost** — Terraform-provisioned infrastructure on Render, GitHub Actions CI/CD building per-service Docker images to GHCR, SHA-pinned deploys with one-click rollback.
 - **Documented like production software** — every non-obvious decision (including a real production incident and its fix) is written up in [docs/lessons](docs/lessons/) instead of left implicit in code.
 
-Monorepo containing a **Next.js** web app, two **Spring Boot** microservices,
-and one **Express/TypeScript** microservice — backed by **PostgreSQL** (one
-database per Spring Boot service), **MongoDB**, **RabbitMQ**, **Redis**, and
+Monorepo containing a **Next.js** web app and two **Spring Boot** microservices —
+backed by **PostgreSQL** (one database per service), **RabbitMQ**, **Redis**, and
 **Cloudflare R2** (media storage).
 
 ---
@@ -39,28 +36,22 @@ database per Spring Boot service), **MongoDB**, **RabbitMQ**, **Redis**, and
 | Frontend             | Next.js 16 (React 19, TypeScript) | `web/`                     | 3000  |
 | Backend — Core       | Spring Boot 3.5 (Java 21, Gradle) | `services/core/`           | 8090  |
 | Backend — Notification | Spring Boot 3.5 (Java 21, Gradle) | `services/notification/`   | 8091  |
-| Backend — Media      | Express 4 (Node 22, TypeScript)   | `services/media/`          | 8092  |
 | Database — Core       | PostgreSQL 17 (via Docker)        | `services/core/`           | 5440  |
 | Database — Notification | PostgreSQL 17 (via Docker)      | `services/notification/`   | 5441  |
-| Database — Media      | MongoDB 7 (via Docker)            | `services/media/`          | 27017 |
 | Message broker        | RabbitMQ 4 (via Docker)           | shared, root `docker-compose.yml` | 5672 (AMQP), 15672 (UI) |
 | Cache/session store    | Redis 7 (via Docker)              | shared, root `docker-compose.yml` | 6379  |
 
-Every app/service is **independent** — its own toolchain (npm for `web/` and
-`services/media/`, Gradle for the two Spring Boot backends), own deploy, own
-database. None of the three backends query each other's database directly.
-Core and Notification talk over RabbitMQ (Core publishes domain events,
-Notification consumes them); Core and Media don't talk to each other at
-all — the frontend calls each directly, and Core only ever stores a media
-asset's id plus a denormalized url/crop snapshot handed to it at write time.
-See [Lesson 4](docs/lessons/lesson-4-microservices.md) for the full story of
-the Notification split (including a real production incident it caused and
-how it was fixed) and [Architecture & flows](docs/tech/architecture-flows.md)
-for the Media split's request flows.
+Every service is **independent** — its own deploy, its own database. The two
+backends never query each other's database directly: Core and Notification talk
+over RabbitMQ (Core publishes domain events, Notification consumes them). See
+[Lesson 4](docs/lessons/lesson-4-microservices.md) for the full story of the
+Notification split (including a real production incident it caused and how it was
+fixed), and [Lesson 7](docs/lessons/lesson-7-remerging-media.md) for why media —
+briefly its own service — was folded back into Core.
 
-Media uploads (post images, avatars, collection covers) live entirely in
-`services/media`, backed by MongoDB (metadata) and Cloudflare R2 (bytes) —
-`services/core` has no media table and no R2 credentials at all.
+Media uploads (post images, avatars, collection covers) live in `services/core`:
+metadata in its Postgres `media` table, image bytes in Cloudflare R2 (via the S3
+API). Core is the only service with R2 credentials.
 
 ## Repository structure
 
@@ -69,16 +60,14 @@ Media uploads (post images, avatars, collection covers) live entirely in
 ├── web/                        # Next.js frontend (npm)
 │   └── src/app/                # App Router pages
 ├── services/
-│   ├── core/                   # Spring Boot backend — auth/user/collection/post/comment (Gradle)
+│   ├── core/                   # Spring Boot backend — auth/user/collection/post/comment/media (Gradle)
 │   │   ├── src/main/java/          # Java source
 │   │   └── src/main/resources/
 │   │       ├── application.yml            # app + DB config
+│   │       ├── application-local.yml.example  # copy to application-local.yml for local R2 creds
 │   │       └── db/migration/              # Flyway SQL migrations
-│   ├── notification/           # Spring Boot backend — RabbitMQ consumer + realtime push (Gradle)
-│   └── media/                  # Express/TypeScript backend — media assets (npm)
-│       ├── src/                    # TypeScript source
-│       └── .env.example            # copy to .env for local Mongo/R2 config
-├── docker-compose.yml          # local Postgres (x2) + Mongo + RabbitMQ + Redis, shared by all services
+│   └── notification/           # Spring Boot backend — RabbitMQ consumer + realtime push (Gradle)
+├── docker-compose.yml          # local Postgres (x2) + RabbitMQ + Redis, shared by both services
 ├── infra/                      # Terraform (Infrastructure as Code) for Render
 ├── .github/workflows/          # CI/CD pipeline (deploy.yml)
 ├── docs/
@@ -91,18 +80,18 @@ Media uploads (post images, avatars, collection covers) live entirely in
 
 - **Node.js** ≥ 22 and npm ≥ 10
 - **Java** 21 (JDK)
-- **Docker** Desktop (for Postgres ×2 + Mongo + RabbitMQ + Redis)
+- **Docker** Desktop (for Postgres ×2 + RabbitMQ + Redis)
 - (optional) VSCode with *Extension Pack for Java* + *Spring Boot Extension Pack*
 
 ## Getting started
 
-Clone, then start the pieces in order: **infra first**, then all three backends, then the frontend.
+Clone, then start the pieces in order: **infra first**, then both backends, then the frontend.
 
-### 1. Start infra (Postgres ×2 + Mongo + RabbitMQ + Redis, in Docker)
+### 1. Start infra (Postgres ×2 + RabbitMQ + Redis, in Docker)
 
 ```bash
 docker compose up -d
-docker ps        # confirm postgres-core, postgres-notification, mongo-media, rabbitmq, redis are Up
+docker ps        # confirm postgres-core, postgres-notification, rabbitmq, redis are Up
 ```
 
 RabbitMQ's management UI is at http://localhost:15672 (guest/guest) — handy
@@ -129,6 +118,12 @@ Verify it's healthy:
 curl http://localhost:8090/actuator/health   # -> {"status":"UP"}
 ```
 
+Core boots fine with no extra config; only **image uploads** need Cloudflare R2
+credentials. To enable them locally, copy
+`services/core/src/main/resources/application-local.yml.example` to
+`application-local.yml` (gitignored) and fill in your R2 values — `./gradlew
+bootRun` activates the `local` profile and picks it up automatically.
+
 ### 3. Run Notification (Spring Boot)
 
 ```bash
@@ -140,20 +135,7 @@ cd services/notification
 curl http://localhost:8091/actuator/health   # -> {"status":"UP"}
 ```
 
-### 4. Run Media (Express)
-
-```bash
-cd services/media
-npm install      # first time only
-cp .env.example .env   # fill in R2 creds to actually store uploads; Mongo/JWT already default to local
-npm run dev
-```
-
-```bash
-curl http://localhost:8092/healthz   # -> {"status":"ok"}
-```
-
-### 5. Run the frontend (Next.js)
+### 4. Run the frontend (Next.js)
 
 ```bash
 cd web
@@ -185,20 +167,22 @@ so **no setup is needed for local dev**. Override when needed:
 | `RABBITMQ_PORT`          | `5672` (local) — hosted brokers use `5671` + TLS         | both backends        |
 | `RABBITMQ_SSL_ENABLED`   | `false` (local) — `true` in production                  | both backends        |
 | `GOOGLE_CLIENT_ID`       | a committed dev-only client id (public, safe to commit) — must match the frontend's `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Core |
-| `CORS_ALLOWED_ORIGINS`   | `http://localhost:3000`                                 | all three backends    |
-| `MONGO_URI`              | `mongodb://localhost:27017/dannest_media`               | Media                 |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY` / `R2_SECRET_KEY` | _(none)_ — required for media upload to actually work locally; see below | Media |
-| `R2_BUCKET`              | `dannest-media`                                         | Media                 |
-| `R2_PUBLIC_BASE_URL`     | _(none)_                                                | Media                 |
+| `CORS_ALLOWED_ORIGINS`   | `http://localhost:3000`                                 | both backends         |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY` / `R2_SECRET_KEY` | _(none)_ — required for media upload to actually work locally; see below | Core |
+| `R2_BUCKET`              | `dannest-media`                                         | Core                  |
+| `R2_PUBLIC_BASE_URL`     | _(none)_                                                | Core                  |
 
 > Local dev credentials are intentionally simple. **Never** use these in production —
 > production supplies real secrets via environment variables (see `infra/terraform.tfvars`,
 > gitignored).
 
 **Cloudflare R2 (media uploads)** doesn't have a zero-config local default like
-the rest of the table — without real credentials, everything runs fine except
-uploading an image. Copy `services/media/.env.example` to `services/media/.env`
-(gitignored), fill in your R2 values, and `npm run dev` picks it up automatically.
+the rest of the table — without real credentials, Core runs fine except for
+uploading an image. Copy
+`services/core/src/main/resources/application-local.yml.example` to
+`application-local.yml` (gitignored), fill in your R2 values, and `./gradlew
+bootRun` picks it up via the `local` profile. (Production sets the `R2_*` env
+vars instead.)
 
 **Frontend (`web/`)** reads its own env vars at *build* time, from
 `web/.env.local` (gitignored, not committed):
@@ -207,7 +191,6 @@ uploading an image. Copy `services/media/.env.example` to `services/media/.env`
 | ----------------------------------- | -------------------------- |
 | `NEXT_PUBLIC_API_URL`               | `http://localhost:8090`    |
 | `NEXT_PUBLIC_NOTIFICATION_API_URL`  | `http://localhost:8091`    |
-| `NEXT_PUBLIC_MEDIA_API_URL`         | `http://localhost:8092`    |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID`      | _(none — Google Sign-In won't work until this is set)_ |
 
 ## Database migrations
@@ -219,15 +202,14 @@ or `services/notification/src/main/resources/db/migration/` named
 service's startup. No two services **ever share a schema** — see
 [Lesson 4](docs/lessons/lesson-4-microservices.md) for why, and
 [`docs/tech/db-schema.md`](docs/tech/db-schema.md) for the current schema
-itself (ER diagrams + table reference for all three databases, including
-Media's schemaless MongoDB collection).
+itself (ER diagrams + table reference for both Postgres databases).
 
 ## Deployment (CI/CD + IaC)
 
-Production runs on **Render** — four services (web, Core, Notification, Media) —
-with two **Neon** Postgres databases (one per Spring Boot backend), one
-**MongoDB Atlas** database (Media), a **CloudAMQP** RabbitMQ instance, and an
-**Upstash** Redis instance (Core only).
+Production runs on **Render** — three services (web, Core, Notification) — with
+two **Neon** Postgres databases (one per Spring Boot backend), a **CloudAMQP**
+RabbitMQ instance, an **Upstash** Redis instance (Core only), and a **Cloudflare
+R2** bucket for media (Core only).
 
 - **Infrastructure as Code** — the Render services are defined in `infra/*.tf`
   (Terraform). Run `terraform apply` from `infra/` to create new ones.
@@ -250,9 +232,11 @@ with two **Neon** Postgres databases (one per Spring Boot backend), one
   because every image is tagged with an immutable commit SHA, never `latest`.
 
 See [`docs/lessons/lesson-2-cicd.md`](docs/lessons/lesson-2-cicd.md) for a
-full, beginner-friendly explanation of the pipeline itself, and
+full, beginner-friendly explanation of the pipeline itself,
 [`docs/lessons/lesson-4-microservices.md`](docs/lessons/lesson-4-microservices.md)
-for how a third service gets added to it.
+for how a service gets added to it, and
+[`docs/lessons/lesson-7-remerging-media.md`](docs/lessons/lesson-7-remerging-media.md)
+for how one gets removed.
 
 ## Learning notes
 
@@ -268,6 +252,7 @@ of *why* things were built the way they were, including the mistakes:
 - [Lesson 4 — Monolith → Microservices](docs/lessons/lesson-4-microservices.md)
 - [Lesson 5 — Redis & refresh tokens](docs/lessons/lesson-5-redis-refresh-tokens.md)
 - [Lesson 6 — Feed caching, a leaderboard, and a fix we didn't need](docs/lessons/lesson-6-feed-cache-and-trending.md)
+- [Lesson 7 — Folding media back into Core](docs/lessons/lesson-7-remerging-media.md)
 
 **Technical reference** (`docs/tech/`) — current-state reference docs, not a
 story:
@@ -277,7 +262,7 @@ story:
   key request/event flows (login, create-post → notification, media upload/
   re-crop/delete, feed cache, trending).
 - [Database schema](docs/tech/db-schema.md) — ER diagrams and table reference
-  for all three databases (Core's Postgres, Notification's Postgres, Media's MongoDB).
+  for both Postgres databases (Core's and Notification's).
 
 ## Roadmap
 
@@ -295,8 +280,8 @@ story:
 - [x] Media uploads (avatars, collection covers, post images) via Cloudflare
       R2, with display-time crop/framing
 - [x] Media extracted into its own service (`services/media`, Express +
-      MongoDB) — a deliberately different stack from the two Spring Boot
-      services; Core keeps only an opaque id + denormalized url/crop snapshot
+      MongoDB), then folded back into Core once the split stopped paying for
+      itself — [Lesson 7](docs/lessons/lesson-7-remerging-media.md)
 - [x] `FOLLOW` / `POST_LIKED` notifications, riding the existing RabbitMQ
       pipe (`NEW_POST`/`COMMENT_REPLY`'s track)
 - [x] Redis feed cache — caches which posts belong on a page, never

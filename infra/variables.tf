@@ -134,11 +134,3 @@ variable "redis_password" {
   type        = string
   sensitive   = true
 }
-
-# ---- MongoDB (Atlas free tier) — backs services/media only ----
-
-variable "mongo_uri" {
-  description = "MongoDB Atlas connection string (mongodb+srv://...), password included"
-  type        = string
-  sensitive   = true
-}

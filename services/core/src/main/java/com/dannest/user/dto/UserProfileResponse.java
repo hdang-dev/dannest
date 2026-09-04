@@ -9,7 +9,7 @@ import java.util.UUID;
  * API view of a user's profile.
  *
  * <p>{@code avatarUrl}/{@code avatarCrop} are sourced only from the user's own
- * denormalized {@code avatarMediaUrl}/{@code avatarCrop} snapshot (see services/media) —
+ * denormalized {@code avatarMediaUrl}/{@code avatarCrop} snapshot —
  * never from the legacy OAuth {@code avatarUrl} string, which is provider bookkeeping,
  * not the profile photo.
  *

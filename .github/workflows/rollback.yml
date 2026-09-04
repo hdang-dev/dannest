@@ -19,7 +19,7 @@ on:
         description: Service to roll back
         required: true
         type: choice
-        options: [web, core, notification, media]
+        options: [web, core, notification]
       deploy_id:
         description: Render deploy id to roll back to (e.g. dep-xxxxxxxxxxxx)
         required: true
@@ -35,7 +35,6 @@ jobs:
             web)          service_id=srv-d955uk3tqb8s73eer9bg ;;
             core)         service_id=srv-d955uk0js32c73ffde7g ;;
             notification) service_id=srv-d9mqrofqj5pc73dk07k0 ;;
-            media)        service_id=srv-da2s5jr7uimc73bagnl0 ;;
           esac
 
           curl -fsS -X POST \

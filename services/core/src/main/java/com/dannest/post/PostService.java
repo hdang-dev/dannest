@@ -398,8 +398,8 @@ public class PostService {
     // -------------------------------------------------------------------
 
     /**
-     * Store the post's images from the caller-supplied url/crop snapshots (services/media
-     * already enforced ownership when it issued those media ids — see media-split notes).
+     * Store the post's images from the caller-supplied {@code {mediaId, url, crop}}
+     * snapshots — copied to {@code post_media} verbatim, no lookup against {@code media}.
      */
     private void attachMedia(Post post, List<PostImageInput> images) {
         if (images == null) {

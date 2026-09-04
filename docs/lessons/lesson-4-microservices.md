@@ -4,6 +4,13 @@ This is the "how did we split one app into three services and keep it all
 alive" lesson. It covers three separate things that all changed together:
 **code**, **infrastructure**, and **the deploy process itself**.
 
+> **Follow-up:** the notification split described here stuck. A later, separate
+> step split *media* out too (`services/media`, Express + MongoDB) — that one did
+> **not** stick. It was folded back into Core once its overhead outweighed what it
+> taught. That story, including the reverse-migration mechanics, is
+> [Lesson 7](lesson-7-remerging-media.md). Read this lesson for how to split; read
+> that one for when *not* to.
+
 ## 1. Before vs after
 
 ```

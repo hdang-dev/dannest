@@ -10,8 +10,8 @@ import java.util.UUID;
  * Body of POST /api/v1/posts.
  *
  * <p>{@code images} are the post's images, in display order — each carries the media id
- * plus the url/crop services/media returned for it (Core no longer looks media up
- * itself). A post may have zero images.
+ * plus the url/crop the {@code POST /api/v1/media} response returned for it (reads use
+ * that snapshot, not a live {@code media} lookup). A post may have zero images.
  */
 public record CreatePostRequest(
         @NotNull UUID collectionId,

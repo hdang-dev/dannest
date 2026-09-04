@@ -33,13 +33,13 @@ public class User extends BaseEntity {
     @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
-    /** Opaque reference into services/media (a Mongo ObjectId, not a UUID) — no FK,
-     * that service owns the asset's lifecycle. */
+    /** Reference to a {@code media} row's id — no FK (varchar(64): historically held
+     * Mongo ObjectIds; new rows are UUIDs). See {@link com.dannest.media.Media}. */
     @Column(name = "avatar_media_id")
     private String avatarMediaId;
 
-    /** Denormalized snapshot of the media service's url/crop, copied at write time
-     * (see docs/tech/architecture-flows.md's media-split notes). Never live-resolved. */
+    /** Denormalized snapshot of the media row's url/crop, copied at write time
+     * (see docs/tech/db-schema.md's *Image crop* notes). Never live-resolved. */
     @Column(name = "avatar_media_url", length = 1024)
     private String avatarMediaUrl;
 

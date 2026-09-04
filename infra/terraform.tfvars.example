@@ -17,7 +17,7 @@ notification_db_password = "npg_xxxxxxxxxxxxxx"
 jwt_secret = "your-long-random-secret"
 
 # ---- Cloudflare R2 (media storage) ----
-# Same values as service/src/main/resources/application-local.yml.
+# Same values as services/core/src/main/resources/application-local.yml.
 r2_account_id      = "your32charhexaccountid"
 r2_access_key      = "your_access_key_id"
 r2_secret_key      = "your_secret_access_key"
@@ -38,6 +38,3 @@ rabbitmq_vhost     = "your-vhost-name"
 redis_host     = "your-instance.upstash.io"
 redis_port     = "6379"
 redis_password = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-# ---- MongoDB Atlas free tier (services/media's own database) ----
-mongo_uri = "mongodb+srv://your-user:your-password@your-cluster.mongodb.net/dannest_media?retryWrites=true&w=majority&appName=Cluster0"
