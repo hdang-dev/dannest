@@ -18,7 +18,8 @@ export const MARKETPLACE_API_URL =
 export const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
-// Publishable, not secret — safe to ship in client JS by design. Used by Stripe
-// Elements to render the real card-entry form (see MembershipCheckoutModal).
+// Publishable, not secret — safe to ship in client JS by design, set as a GitHub
+// Actions *variable* (not a secret) so `${{ vars.* }}` in the deploy workflow can
+// read it. Used by Stripe Elements to render the card form (see MembershipCheckoutModal).
 export const STRIPE_PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
