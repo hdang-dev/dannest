@@ -8,7 +8,8 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Consumes Core's domain events off the {@code notification.events} queue (see RabbitConfig).
+ * Consumes Core's domain events off the {@code notification.events} queue (see RabbitConfig)
+ * and turns each into a persisted notification plus a live WebSocket push.
  *
  * <p>Any exception from {@link #notificationService} — not just an unrecognized {@code
  * NotificationType} — is rejected without requeue instead of left to Spring's default
