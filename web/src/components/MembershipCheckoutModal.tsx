@@ -55,7 +55,7 @@ export default function MembershipCheckoutModal({ collectionId, priceCents, onCl
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent dark:border-slate-800 dark:bg-slate-900 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700"
       >
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
@@ -85,7 +85,26 @@ export default function MembershipCheckoutModal({ collectionId, priceCents, onCl
             </svg>
           </div>
         ) : (
-          <Elements stripe={stripePromise} options={{ clientSecret }}>
+          <Elements
+            stripe={stripePromise}
+            options={{
+              clientSecret,
+              // Match the app's own look instead of Stripe's default styling — see
+              // https://docs.stripe.com/elements/appearance-api.
+              appearance: {
+                theme: "stripe",
+                variables: {
+                  colorPrimary: "#0d9488", // teal-600, same as the app's buttons
+                  colorText: "#0f172a", // slate-900
+                  colorTextPlaceholder: "#94a3b8", // slate-400
+                  colorDanger: "#e11d48", // rose-600
+                  fontFamily: "inherit",
+                  borderRadius: "10px",
+                  spacingUnit: "3px",
+                },
+              },
+            }}
+          >
             <CheckoutForm purchaseId={purchaseId} onClose={onClose} onResult={onResult} />
           </Elements>
         )}
@@ -148,7 +167,16 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="mt-4">
-      <PaymentElement />
+      <PaymentElement
+        options={{
+          // NOTE: this only hides a standalone Link "express checkout" button — it does
+          // NOT remove the "Secure, fast checkout with Link" enrollment prompt baked into
+          // the card form (that one's account-wide, see dashboard.stripe.com/settings/payment_methods
+          // per https://docs.stripe.com/payments/link/payment-element-link). Kept anyway
+          // as the documented way to opt out of the part that *is* controllable here.
+          wallets: { link: "never" },
+        }}
+      />
       {formError && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{formError}</p>}
       <div className="mt-4 flex items-center justify-end gap-2">
         <button
