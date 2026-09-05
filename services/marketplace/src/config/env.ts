@@ -24,5 +24,6 @@ export const env = {
   },
 };
 
-/** True once real Stripe test/live keys are set — checked before any payment endpoint runs. */
-export const stripeConfigured = Boolean(env.stripe.secretKey && env.stripe.webhookSecret);
+/** True once the API key is set — everything except the (not yet built) webhook endpoint
+ * only needs this. webhookSecret is checked separately, once that endpoint exists. */
+export const stripeConfigured = Boolean(env.stripe.secretKey);

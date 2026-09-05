@@ -14,7 +14,7 @@ public interface CollectionMembershipRepository extends JpaRepository<Collection
     /** Batched form for {@code toResponses} — one query instead of one per collection in a page. */
     List<CollectionMembership> findByUserIdAndCollectionIdInAndRevokedAtIsNull(UUID userId, List<UUID> collectionIds);
 
-    Optional<CollectionMembership> findByPurchaseId(UUID purchaseId);
+    Optional<CollectionMembership> findByPurchaseId(String purchaseId);
 
     /** Stuck-saga / timeout-revoke sweep target (phase 3): active memberships past expiry. */
     List<CollectionMembership> findByRevokedAtIsNullAndExpiresAtBefore(Instant cutoff);

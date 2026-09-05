@@ -20,7 +20,9 @@ import lombok.Setter;
  * <p>{@code purchaseId} is the join key back to marketplace's own {@code
  * membership_purchase} row (a different database — logical reference only, no FK) and
  * doubles as the saga's idempotency key: a unique constraint means processing the same
- * {@code purchase_initiated} event twice can never grant two rows.
+ * {@code purchase_initiated} event twice can never grant two rows. It's a {@code String}
+ * (Mongo ObjectId), not a {@code UUID} — same reasoning as {@code media_id} elsewhere in
+ * Core: an opaque id from another service, in that service's own id format.
  */
 @Entity
 @Table(name = "collection_membership")
@@ -37,8 +39,8 @@ public class CollectionMembership extends BaseEntity {
     @Column(name = "collection_id", nullable = false)
     private UUID collectionId;
 
-    @Column(name = "purchase_id")
-    private UUID purchaseId;
+    @Column(name = "purchase_id", length = 64)
+    private String purchaseId;
 
     @Column(name = "granted_at", nullable = false)
     private Instant grantedAt;
