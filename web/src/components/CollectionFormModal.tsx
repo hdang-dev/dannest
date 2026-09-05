@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import Link from "next/link";
 import {
   createCollection,
   updateCollection,
@@ -8,6 +9,7 @@ import {
   type CreateCollectionInput,
   type Visibility,
 } from "@/lib/collections";
+import { getConnectStatus } from "@/lib/marketplace";
 import {
   createExternalMedia,
   updateMediaCrop,
@@ -47,6 +49,24 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
   const membersOnlyLocked = mode === "edit" && collection?.visibility === "MEMBERS_ONLY";
   const priceCents = Math.round(parseFloat(priceDollars || "0") * 100);
   const priceValid = visibility !== "MEMBERS_ONLY" || priceCents > 0;
+
+  // Members-only is only offered once the creator can actually get paid — otherwise
+  // every purchase against it is doomed before it starts (charged, then immediately
+  // refunded because there's nowhere to send the creator's cut). Gating it here, at
+  // creation, means that failure mode structurally can't happen for a collection
+  // created after this shipped; see ConnectSettingsCard on the profile page.
+  const [payoutsEnabled, setPayoutsEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (mode !== "create") return;
+    let cancelled = false;
+    getConnectStatus()
+      .then((s) => !cancelled && setPayoutsEnabled(s.payoutsEnabled))
+      .catch(() => !cancelled && setPayoutsEnabled(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+  const canOfferMembersOnly = mode === "create" && payoutsEnabled === true;
 
   const initialCover: Cover | null = collection?.coverMediaId
     ? {
@@ -363,23 +383,39 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
               {(mode === "create"
                 ? (["PUBLIC", "PRIVATE", "MEMBERS_ONLY"] as Visibility[])
                 : (["PUBLIC", "PRIVATE"] as Visibility[])
-              ).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setVisibility(v)}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
-                    visibility === v
-                      ? "bg-teal-600 text-white"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  {v === "PUBLIC" ? "Public" : v === "PRIVATE" ? "Private" : "Members-only"}
-                </button>
-              ))}
+              ).map((v) => {
+                const disabled = v === "MEMBERS_ONLY" && !canOfferMembersOnly;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={disabled}
+                    title={disabled ? "Connect Stripe in your profile first" : undefined}
+                    onClick={() => !disabled && setVisibility(v)}
+                    className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                      visibility === v && !disabled
+                        ? "bg-teal-600 text-white"
+                        : disabled
+                          ? "cursor-not-allowed text-slate-300 dark:text-slate-600"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    {v === "PUBLIC" ? "Public" : v === "PRIVATE" ? "Private" : "Members-only"}
+                  </button>
+                );
+              })}
             </div>
 
-            {visibility === "MEMBERS_ONLY" && (
+            {mode === "create" && !canOfferMembersOnly && payoutsEnabled !== null && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                <Link href="/profile" className="text-teal-600 underline dark:text-teal-400">
+                  Connect Stripe in your profile
+                </Link>{" "}
+                to create a members-only collection.
+              </p>
+            )}
+
+            {visibility === "MEMBERS_ONLY" && canOfferMembersOnly && (
               <div className="mt-2">
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
                   Price to join <span className="text-slate-400">(USD, one-time)</span>

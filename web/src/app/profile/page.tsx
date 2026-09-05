@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
+import ConnectSettingsCard from "@/components/ConnectSettingsCard";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import ImageCropper from "@/components/ImageCropper";
 import LoadingState from "@/components/LoadingState";
@@ -469,6 +470,8 @@ export default function ProfilePage() {
               )}
             </div>
           )}
+
+          {profile && !editing && <ConnectSettingsCard />}
         </main>
       </div>
 
