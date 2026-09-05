@@ -52,14 +52,30 @@ services:
 
     # Backs services/marketplace (see services/marketplace/src/db/mongoose.ts). Run with
     # `npm run dev` on the host, same as the old media service used to.
+    #
+    # Runs as a single-node replica set (not a bare standalone) — the membership saga's
+    # outbox write needs a real multi-document transaction (business row + outbox row,
+    # atomically, same as Core's @Transactional does in Postgres), and MongoDB only
+    # supports transactions on a replica set. Atlas (production) already is one; this
+    # healthcheck is purely a local-dev concern — it idempotently self-initiates rs0 on
+    # first boot (checks status first, only calls rs.initiate() if not already a member),
+    # so no manual setup step or separate init container is needed.
     mongo-marketplace:
         image: mongo:7
         container_name: dannest-mongo-marketplace
         restart: unless-stopped
+        command: ["--replSet", "rs0", "--bind_ip_all"]
         ports:
             - "27017:27017"
         volumes:
             - dannest_marketplace_data:/data/db
+        healthcheck:
+            test: >
+                echo "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }"
+                | mongosh --quiet
+            interval: 5s
+            timeout: 10s
+            retries: 30
 
 volumes:
     dannest_core_data:
