@@ -5,6 +5,7 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper.TypePrecedence;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -24,13 +25,21 @@ import org.springframework.context.annotation.Configuration;
  * those ({@code NotificationType.valueOf("ACTIVITY_POST_CREATED")}) — which, left unguarded,
  * means Spring AMQP's default requeue-on-exception behavior turns into an infinite redelivery
  * loop. The activity queue binds the other way — only the {@code ACTIVITY_*} keys.
+ *
+ * <p>Both queues also carry a dead-letter queue now — the routing fix above only closes the
+ * one failure mode it was written for (an unrecognized type reaching this listener). Any
+ * other exception from {@code EventConsumer} (a bad row, a DB hiccup) is just as capable of
+ * an infinite loop, which is what {@code EventConsumer}'s own reject-and-DLQ handling
+ * (mirroring Core's {@code MembershipSagaListener}) now needs somewhere to actually land.
  */
 @Configuration
 public class RabbitConfig {
 
     private static final String EVENTS_EXCHANGE = "dannest.events";
     private static final String NOTIFICATION_QUEUE = "notification.events";
+    private static final String NOTIFICATION_DLQ = "notification.events.dlq";
     private static final String ACTIVITY_QUEUE = "activity.events";
+    private static final String ACTIVITY_DLQ = "activity.events.dlq";
 
     private static final List<String> NOTIFICATION_ROUTING_KEYS =
             List.of("NEW_POST", "COMMENT_REPLY", "FOLLOW", "POST_LIKED");
@@ -43,8 +52,16 @@ public class RabbitConfig {
     }
 
     @Bean
+    Queue notificationDlq() {
+        return new Queue(NOTIFICATION_DLQ, true);
+    }
+
+    @Bean
     Queue notificationQueue() {
-        return new Queue(NOTIFICATION_QUEUE, true);
+        return QueueBuilder.durable(NOTIFICATION_QUEUE)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", NOTIFICATION_DLQ)
+                .build();
     }
 
     /**
@@ -61,8 +78,16 @@ public class RabbitConfig {
     }
 
     @Bean
+    Queue activityDlq() {
+        return new Queue(ACTIVITY_DLQ, true);
+    }
+
+    @Bean
     Queue activityQueue() {
-        return new Queue(ACTIVITY_QUEUE, true);
+        return QueueBuilder.durable(ACTIVITY_QUEUE)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", ACTIVITY_DLQ)
+                .build();
     }
 
     @Bean

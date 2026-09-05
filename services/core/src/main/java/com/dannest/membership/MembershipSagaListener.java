@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
  * default requeue-on-exception, which is how this codebase already got bitten by an
  * infinite redelivery loop once — see notification's RabbitConfig javadoc). Parsing by
  * hand means a malformed message can be logged and dropped instead of retried forever.
+ *
+ * <p>{@link #membershipService}'s own processing is guarded the same way, for the same
+ * reason: a deterministic failure there (bad data, a bug) is just as capable of looping
+ * forever as a malformed payload is, and Spring's default error handler only routes a
+ * message to this queue's DLQ for exceptions it considers "fatal" — a plain business
+ * exception isn't one, so without this it would requeue and retry identically forever
+ * instead of ever reaching the DLQ its own queue definition promises.
  */
 @Slf4j
 @Component
@@ -49,6 +57,12 @@ public class MembershipSagaListener {
             return;
         }
 
-        membershipService.processPurchase(event);
+        try {
+            membershipService.processPurchase(event);
+        } catch (Exception e) {
+            log.error("Failed to process purchase_initiated for purchase {}, sending to DLQ",
+                    event.purchaseId(), e);
+            throw new AmqpRejectAndDontRequeueException(e);
+        }
     }
 }
