@@ -1,90 +1,112 @@
-// The membership-purchase saga's marketplace half. Shape (see docs/lessons once
-// written): charge the buyer to the platform's own Stripe balance -> publish
-// purchase_initiated -> Core validates and replies -> settle (transfer the creator's
-// cut) or refund. Two compensation paths: Core rejects (refund), or Core grants but the
-// settle step itself fails, e.g. the creator never finished Connect onboarding (refund
-// AND, eventually, tell Core to revoke — that revoke listener is phase 5, not built yet).
-import { randomUUID } from "crypto";
-import mongoose from "mongoose";
+// The membership-purchase saga's marketplace half.
+//
+// Shape: create an unconfirmed PaymentIntent -> the buyer pays via a real Stripe
+// Elements card form in the browser -> Stripe's webhook tells us the charge
+// succeeded -> THAT is what actually starts the saga (charged, write outbox
+// purchase_initiated) -> Core validates and replies -> settle (transfer the
+// creator's cut) or refund. Two compensation paths once the saga is running: Core
+// rejects (refund), or Core grants but the settle step itself fails, e.g. the
+// creator never finished Connect onboarding (refund AND, eventually, tell Core to
+// revoke — that revoke listener is phase 5, not built yet).
 import { BadRequestError, NotFoundError } from "../errors";
 import { claim } from "../inbox/idempotency";
-import { writeOutboxEvent } from "../outbox/writer";
 import { requireConnectedAccount } from "../connect/connectService";
 import { stripe } from "../stripe/client";
 import MembershipPurchase, { MembershipPurchaseDocument } from "./MembershipPurchase";
-
-// Stripe's built-in test-mode token — stands in for what a real frontend's Stripe
-// Elements would supply via createPaymentMethod(). Used only if the caller doesn't send
-// one, which is always true today since there's no UI yet.
-const TEST_PAYMENT_METHOD = "pm_card_visa";
+import { startSagaFromCharge } from "./sagaStart";
 
 export interface InitiateMembershipInput {
   buyerId: string;
   collectionId: string;
   priceCents: number;
-  paymentMethodId?: string;
 }
 
 export interface InitiateMembershipResult {
   purchaseId: string;
-  status: string;
+  /** Hand this to Stripe Elements on the frontend — it's what lets the browser
+   * confirm payment directly with Stripe, never touching our server with card data. */
+  clientSecret: string;
 }
 
-/** Charge the buyer, then atomically record the purchase + queue the saga's first event. */
+/**
+ * Create the PaymentIntent and the purchase row, both PENDING_PAYMENT — nothing is
+ * charged yet. The saga doesn't start here; it starts when the webhook (see
+ * webhookController) tells us the payment actually succeeded.
+ */
 export async function initiatePurchase(input: InitiateMembershipInput): Promise<InitiateMembershipResult> {
   const paymentIntent = await stripe.paymentIntents.create({
     amount: input.priceCents,
     currency: "usd",
-    payment_method: input.paymentMethodId ?? TEST_PAYMENT_METHOD,
     payment_method_types: ["card"],
-    confirm: true,
     metadata: { buyerId: input.buyerId, collectionId: input.collectionId },
   });
 
-  if (paymentIntent.status !== "succeeded") {
-    // Nothing written yet — no compensation needed, there's nothing to undo.
-    throw new BadRequestError(`Payment did not complete (status: ${paymentIntent.status})`);
+  if (!paymentIntent.client_secret) {
+    throw new BadRequestError("Stripe did not return a client secret");
   }
 
-  const session = await mongoose.startSession();
-  let purchase: MembershipPurchaseDocument;
-  try {
-    purchase = await session.withTransaction(async () => {
-      const [created] = await MembershipPurchase.create(
-        [
-          {
-            buyerId: input.buyerId,
-            collectionId: input.collectionId,
-            priceCents: input.priceCents,
-            stripePaymentIntentId: paymentIntent.id,
-            status: "CHARGED",
-          },
-        ],
-        { session },
-      );
-      await writeOutboxEvent(session, "MEMBERSHIP_PURCHASE", created.id, "mkt.membership.purchase_initiated", {
-        eventId: randomUUID(),
-        purchaseId: created.id,
-        buyerId: input.buyerId,
-        collectionId: input.collectionId,
-        priceCents: input.priceCents,
-      });
-      return created;
-    });
-  } finally {
-    await session.endSession();
-  }
+  const purchase = await MembershipPurchase.create({
+    buyerId: input.buyerId,
+    collectionId: input.collectionId,
+    priceCents: input.priceCents,
+    stripePaymentIntentId: paymentIntent.id,
+    status: "PENDING_PAYMENT",
+  });
 
-  return { purchaseId: purchase.id, status: purchase.status };
+  return { purchaseId: purchase.id, clientSecret: paymentIntent.client_secret };
 }
 
 export async function getPurchase(purchaseId: string): Promise<MembershipPurchaseDocument> {
-  const purchase = await MembershipPurchase.findById(purchaseId);
+  // findById throws (rather than resolving null) for a string that isn't even a
+  // well-formed ObjectId — treat that the same as "not found" instead of a 500, since
+  // it means a caller mistake (a stale/undefined id), not a server problem.
+  let purchase;
+  try {
+    purchase = await MembershipPurchase.findById(purchaseId);
+  } catch {
+    throw new NotFoundError(`Purchase not found: ${purchaseId}`);
+  }
   if (!purchase) throw new NotFoundError(`Purchase not found: ${purchaseId}`);
   return purchase;
 }
 
-// ---- saga replies ----
+/**
+ * Called by the Stripe webhook (see webhookController) once payment truly succeeded —
+ * this is where the saga's first step actually happens: mark CHARGED and queue
+ * purchase_initiated, atomically. See sagaStart.ts for why this needs its own
+ * idempotency guard distinct from the RabbitMQ inbox (a webhook redelivery has
+ * nothing to do with message-broker delivery).
+ */
+export async function markChargedAndStartSaga(stripeEventId: string, paymentIntentId: string): Promise<void> {
+  if (!(await claim(stripeEventId, "marketplace.stripe.webhook"))) return; // Stripe redelivers webhooks too
+
+  const purchase = await MembershipPurchase.findOne({ stripePaymentIntentId: paymentIntentId });
+  if (!purchase) {
+    console.error(`payment_intent.succeeded for unknown PaymentIntent ${paymentIntentId}`);
+    return;
+  }
+  if (purchase.status !== "PENDING_PAYMENT") return; // already handled
+
+  await startSagaFromCharge(purchase);
+}
+
+/** The card was declined, expired, etc. — nothing was ever charged, nothing to compensate. */
+export async function markPaymentFailed(
+  stripeEventId: string,
+  paymentIntentId: string,
+  reason: string | null,
+): Promise<void> {
+  if (!(await claim(stripeEventId, "marketplace.stripe.webhook"))) return;
+
+  const purchase = await MembershipPurchase.findOne({ stripePaymentIntentId: paymentIntentId });
+  if (!purchase || purchase.status !== "PENDING_PAYMENT") return;
+
+  purchase.status = "PAYMENT_FAILED";
+  purchase.reason = reason;
+  await purchase.save();
+}
+
+// ---- saga replies (Core's half of the round trip) ----
 
 interface ActivatedPayload {
   eventId: string;

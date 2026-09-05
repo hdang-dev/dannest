@@ -1,6 +1,11 @@
 import { Document, Schema, model } from "mongoose";
 
-export type MembershipPurchaseStatus = "CHARGED" | "CONFIRMED" | "REFUNDED";
+export type MembershipPurchaseStatus =
+  | "PENDING_PAYMENT" // PaymentIntent created, buyer hasn't paid (or Stripe hasn't confirmed) yet
+  | "PAYMENT_FAILED" // the card was declined etc. — nothing was ever charged, saga never started
+  | "CHARGED" // webhook confirmed payment succeeded — saga's first step, purchase_initiated is queued
+  | "CONFIRMED" // Core granted + the creator's cut was transferred
+  | "REFUNDED"; // Core rejected, or the transfer to the creator failed — buyer's money went back
 
 export interface MembershipPurchaseDocument extends Document {
   buyerId: string;
@@ -9,7 +14,7 @@ export interface MembershipPurchaseDocument extends Document {
   stripePaymentIntentId: string;
   stripeTransferId: string | null;
   status: MembershipPurchaseStatus;
-  /** Why it was refunded — Core's rejection reason, or "settle_failed" (see membershipService). */
+  /** Why it was refunded/failed — Core's rejection reason, "settle_failed", or Stripe's decline reason. */
   reason: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -24,9 +29,9 @@ const membershipPurchaseSchema = new Schema<MembershipPurchaseDocument>(
     stripeTransferId: { type: String, default: null },
     status: {
       type: String,
-      enum: ["CHARGED", "CONFIRMED", "REFUNDED"],
+      enum: ["PENDING_PAYMENT", "PAYMENT_FAILED", "CHARGED", "CONFIRMED", "REFUNDED"],
       required: true,
-      default: "CHARGED",
+      default: "PENDING_PAYMENT",
     },
     reason: { type: String, default: null },
   },

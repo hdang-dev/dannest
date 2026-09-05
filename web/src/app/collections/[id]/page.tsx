@@ -9,6 +9,7 @@ import PostFeed from "@/components/PostFeed";
 import NewPostFab from "@/components/NewPostFab";
 import PostComposerModal from "@/components/PostComposerModal";
 import CollectionFormModal from "@/components/CollectionFormModal";
+import MembershipCheckoutModal from "@/components/MembershipCheckoutModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import LoadingState from "@/components/LoadingState";
@@ -20,6 +21,7 @@ import { useToast } from "@/lib/toast";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
 import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
 import { followCollection, getFollowStatus, unfollowCollection } from "@/lib/follows";
+import type { MembershipPurchase } from "@/lib/marketplace";
 
 type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
 
@@ -39,6 +41,20 @@ export default function CollectionPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  const mine = !!user && !!collection && collection.ownerId === user.id;
+
+  function reload() {
+    getCollection(id)
+      .then((c) => setCollection(c))
+      .catch(() => setCollection(null));
+    listByCollection(id, { size: 50 })
+      .then((page) => setPosts(page.content))
+      // A locked members-only collection 404s its post list for a non-member — that's
+      // expected, the "buy to unlock" panel below covers that case, not an error.
+      .catch(() => setPosts([]));
+  }
 
   // Load the real collection + its posts from the backend.
   useEffect(() => {
@@ -54,7 +70,39 @@ export default function CollectionPage() {
     };
   }, [id]);
 
-  const mine = !!user && !!collection && collection.ownerId === user.id;
+  // A members-only collection the viewer neither owns nor has bought into — its posts
+  // stay hidden behind a "buy to unlock" panel instead of the feed.
+  const locked = !!collection && collection.visibility === "MEMBERS_ONLY" && !mine && !collection.viewerHasMembership;
+
+  // Called once Stripe Elements has confirmed the card charge and the saga has
+  // settled (see MembershipCheckoutModal — it owns starting the PaymentIntent,
+  // collecting the card, and polling the purchase to a final status).
+  function handlePurchaseResult(settled: MembershipPurchase) {
+    setCheckoutOpen(false);
+    // Always reload, not just on CONFIRMED — a REFUNDED result can still mean you
+    // already have access (e.g. "Already an active member", refunding a redundant
+    // charge against a membership you already hold). Whatever this specific
+    // purchase did, the collection's real viewerHasMembership is the source of
+    // truth, and the locked panel should never sit stale after an attempt resolves.
+    if (settled.status === "CONFIRMED") {
+      notify("You're in! Refreshing…");
+    } else if (settled.reason === "Already an active member") {
+      // Not really a failure from the buyer's point of view — they already have
+      // access, this specific (redundant) charge is just the one being refunded.
+      notify("You already have access to this collection.");
+    } else if (settled.reason === "settle_failed") {
+      notify(
+        "This creator hasn't finished setting up payouts yet, so you've been refunded.",
+        "error",
+      );
+    } else {
+      // Any other rejection reason from Core (price mismatch, archived, etc.) — not
+      // worth surfacing verbatim to a buyer, it's an internal validation detail.
+      notify("Purchase didn't go through — you've been refunded.", "error");
+    }
+    reload();
+  }
+
   const [from, to] = gradientFor(id);
 
   // Whether the caller follows this collection — only relevant once it's loaded and
@@ -264,11 +312,27 @@ export default function CollectionPage() {
               )}
 
               <p className="text-sm text-slate-400">
-                {collection.visibility === "PRIVATE" ? "Private · " : ""}
-                {posts?.length ?? 0} {(posts?.length ?? 0) === 1 ? "post" : "posts"}
+                {collection.visibility === "PRIVATE"
+                  ? "Private · "
+                  : collection.visibility === "MEMBERS_ONLY"
+                    ? `Members-only · $${(collection.priceCents! / 100).toFixed(2)} · `
+                    : ""}
+                {locked ? "—" : (posts?.length ?? 0)} {(posts?.length ?? 0) === 1 && !locked ? "post" : "posts"}
               </p>
 
-              {posts === null ? (
+              {locked ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 py-10 text-center dark:border-slate-700">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    This collection&apos;s posts are for members only.
+                  </p>
+                  <button
+                    onClick={() => setCheckoutOpen(true)}
+                    className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {`Unlock for $${(collection.priceCents! / 100).toFixed(2)}`}
+                  </button>
+                </div>
+              ) : posts === null ? (
                 <LoadingState minHeight="30vh" />
               ) : (
                 <PostFeed
@@ -307,6 +371,15 @@ export default function CollectionPage() {
             setCollection(saved);
             setEditing(false);
           }}
+        />
+      )}
+
+      {checkoutOpen && collection && collection.priceCents != null && (
+        <MembershipCheckoutModal
+          collectionId={collection.id}
+          priceCents={collection.priceCents}
+          onClose={() => setCheckoutOpen(false)}
+          onResult={handlePurchaseResult}
         />
       )}
 

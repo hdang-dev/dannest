@@ -4,15 +4,22 @@ import { env, stripeConfigured } from "./config/env";
 import errorHandler from "./middleware/errorHandler";
 import connectRoutes from "./connect/connect.routes";
 import membershipRoutes from "./membership/membership.routes";
+import * as stripeWebhookController from "./membership/stripeWebhookController";
 
 const app = express();
 
 app.use(cors({ origin: env.corsAllowedOrigins, credentials: true }));
 
-// NOTE for phase 2 (Stripe webhook): mount that route with express.raw({type:
-// "application/json"}) BEFORE this express.json(), and outside any router that
-// applies the `auth` middleware — Stripe signs the raw body itself instead of
-// sending a bearer token, so it needs both an unparsed body and no JWT check.
+// Stripe signs the raw request bytes itself — no bearer token, and the body must
+// reach the handler unparsed (constructEvent needs the exact original bytes to
+// verify the signature). So this is mounted BEFORE express.json() and outside any
+// router that applies the `auth` middleware, unlike every other route below.
+app.post(
+  "/api/v1/marketplace/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhookController.handle,
+);
+
 app.use(express.json());
 
 // Matches Core's /actuator/health and Notification's — Render polls this.

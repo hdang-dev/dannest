@@ -3,14 +3,16 @@ import { BadRequestError } from "../errors";
 import * as membershipService from "./membershipService";
 
 async function initiate(req: Request, res: Response): Promise<void> {
-  const { collectionId, priceCents, paymentMethodId } = req.body;
+  const { collectionId, priceCents } = req.body;
   const result = await membershipService.initiatePurchase({
     buyerId: req.userId,
     collectionId,
     priceCents,
-    paymentMethodId,
   });
-  res.status(202).json(result);
+  // 201, not 202 — this creates a real resource (a PENDING_PAYMENT purchase +
+  // PaymentIntent) synchronously. Nothing async has happened yet; that starts once
+  // the browser confirms payment with the returned clientSecret.
+  res.status(201).json(result);
 }
 
 async function get(req: Request, res: Response): Promise<void> {

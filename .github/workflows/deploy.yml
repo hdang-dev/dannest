@@ -84,12 +84,15 @@ jobs:
           file: ./web/Dockerfile
           push: true
           tags: ${{ steps.vars.outputs.image }}
-          # NEXT_PUBLIC_MARKETPLACE_API_URL / NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY join this
-          # list once web/Dockerfile actually declares those ARGs (web isn't touched yet).
+          # Publishable, not secret — safe as a repo variable rather than a secret (see
+          # web/src/lib/config.ts). Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY under repo
+          # Settings > Actions > Variables for this to reach the built bundle.
           build-args: |
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_MARKETPLACE_API_URL=${{ vars.NEXT_PUBLIC_MARKETPLACE_API_URL }}
             NEXT_PUBLIC_NOTIFICATION_API_URL=${{ vars.NEXT_PUBLIC_NOTIFICATION_API_URL }}
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
 
   deploy-web:
     needs: [build-web]
