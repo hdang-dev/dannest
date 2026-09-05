@@ -38,3 +38,12 @@ rabbitmq_vhost     = "your-vhost-name"
 redis_host     = "your-instance.upstash.io"
 redis_port     = "6379"
 redis_password = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# ---- MongoDB Atlas free tier (services/marketplace's own database) ----
+mongo_marketplace_uri = "mongodb+srv://your-user:your-password@your-cluster.mongodb.net/dannest_marketplace?retryWrites=true&w=majority&appName=Cluster0"
+
+# ---- Stripe (test mode) ----
+# dashboard.stripe.com, "Test mode" ON (top right) -> Developers > API keys / Webhooks.
+stripe_secret_key      = "sk_test_xxxxxxxxxxxxxxxxxxxxxxxx"
+stripe_publishable_key = "pk_test_xxxxxxxxxxxxxxxxxxxxxxxx"
+stripe_webhook_secret  = "whsec_xxxxxxxxxxxxxxxxxxxxxxxx"

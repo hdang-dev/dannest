@@ -33,6 +33,10 @@ locals {
   web_url          = "https://dannest-punh.onrender.com"
   backend_url      = "https://dannest-service-jauh.onrender.com"
   notification_url = "https://dannest-notification.onrender.com"
+  # Best-guess slug — Render may append a random suffix if "dannest-marketplace" isn't
+  # available. Correct this (and NEXT_PUBLIC_MARKETPLACE_API_URL below) to the real URL
+  # after the service is actually created; not applied yet, see NOTE below.
+  marketplace_url = "https://dannest-marketplace.onrender.com"
 }
 
 # ---- Backend API (Core): Docker service built from services/core/Dockerfile ----
@@ -131,6 +135,53 @@ resource "render_web_service" "notification" {
   }
 }
 
+# ---- Marketplace service: Docker service built from services/marketplace/Dockerfile ----
+# Not created yet — see the NOTE at the top of this file on why `terraform apply` isn't
+# run blindly here (it would also touch backend/notification/web's runtime_source drift).
+# Create this one resource deliberately once services/marketplace has something worth
+# deploying, or via the Render dashboard/API directly, then reconcile state.
+resource "render_web_service" "marketplace" {
+  name   = "dannest-marketplace"
+  plan   = "free"
+  region = "virginia"
+
+  runtime_source = {
+    docker = {
+      repo_url        = var.repo_url
+      branch          = "main"
+      dockerfile_path = "./services/marketplace/Dockerfile"
+      context         = "./services/marketplace"
+      auto_deploy     = false # GitHub Actions (the robot) will trigger deploys
+    }
+  }
+
+  health_check_path = "/healthz"
+
+  env_vars = {
+    MONGO_URI = { value = var.mongo_marketplace_uri }
+
+    # Must match Core's JWT_SECRET exactly — this service verifies tokens Core issues.
+    JWT_SECRET           = { value = var.jwt_secret }
+    CORS_ALLOWED_ORIGINS = { value = local.web_url }
+
+    # Message broker — same CloudAMQP instance Core publishes to; marketplace both
+    # publishes (mkt.* outbox events) and consumes (core.membership.* saga replies).
+    RABBITMQ_HOST        = { value = var.rabbitmq_host }
+    RABBITMQ_PORT        = { value = "5671" }
+    RABBITMQ_USERNAME    = { value = var.rabbitmq_username }
+    RABBITMQ_PASSWORD    = { value = var.rabbitmq_password }
+    RABBITMQ_VHOST       = { value = var.rabbitmq_vhost }
+    RABBITMQ_SSL_ENABLED = { value = "true" }
+
+    # Stripe (test mode) — Connect onboarding, charges, transfers, refunds.
+    STRIPE_SECRET_KEY          = { value = var.stripe_secret_key }
+    STRIPE_PUBLISHABLE_KEY     = { value = var.stripe_publishable_key }
+    STRIPE_WEBHOOK_SECRET      = { value = var.stripe_webhook_secret }
+    STRIPE_CONNECT_REFRESH_URL = { value = "${local.web_url}/settings/payouts" }
+    STRIPE_CONNECT_RETURN_URL  = { value = "${local.web_url}/settings/payouts?connected=1" }
+  }
+}
+
 # ---- Web frontend: Next.js run as a Node service ----
 resource "render_web_service" "web" {
   name   = "dannest"
@@ -157,6 +208,8 @@ resource "render_web_service" "web" {
     NEXT_PUBLIC_GOOGLE_CLIENT_ID     = { value = var.google_client_id }
     NEXT_PUBLIC_API_URL              = { value = local.backend_url }
     NEXT_PUBLIC_NOTIFICATION_API_URL = { value = local.notification_url }
+    NEXT_PUBLIC_MARKETPLACE_API_URL  = { value = local.marketplace_url }
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = { value = var.stripe_publishable_key }
   }
 }
 
@@ -171,4 +224,8 @@ output "web_url" {
 
 output "notification_url" {
   value = render_web_service.notification.url
+}
+
+output "marketplace_url" {
+  value = render_web_service.marketplace.url
 }

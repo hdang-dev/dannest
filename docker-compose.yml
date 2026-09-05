@@ -1,8 +1,8 @@
 name: dannest
 
 # Local dev infra shared by all backend services under services/. Each Spring Boot
-# app still runs on the host via `./gradlew bootRun` — only its dependencies
-# (Postgres, RabbitMQ) run in Docker.
+# app still runs on the host via `./gradlew bootRun`, and marketplace via `npm run
+# dev` — only their dependencies (Postgres, MongoDB, RabbitMQ) run in Docker.
 services:
     postgres-core:
         image: postgres:17-alpine
@@ -50,6 +50,18 @@ services:
         ports:
             - "6379:6379"
 
+    # Backs services/marketplace (see services/marketplace/src/db/mongoose.ts). Run with
+    # `npm run dev` on the host, same as the old media service used to.
+    mongo-marketplace:
+        image: mongo:7
+        container_name: dannest-mongo-marketplace
+        restart: unless-stopped
+        ports:
+            - "27017:27017"
+        volumes:
+            - dannest_marketplace_data:/data/db
+
 volumes:
     dannest_core_data:
     dannest_notification_data:
+    dannest_marketplace_data:

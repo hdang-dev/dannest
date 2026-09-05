@@ -134,3 +134,30 @@ variable "redis_password" {
   type        = string
   sensitive   = true
 }
+
+# ---- MongoDB (Atlas free tier) — backs services/marketplace only ----
+
+variable "mongo_marketplace_uri" {
+  description = "MongoDB Atlas connection string for services/marketplace (mongodb+srv://...), password included"
+  type        = string
+  sensitive   = true
+}
+
+# ---- Stripe (test mode) — Connect onboarding, charges, transfers, refunds ----
+
+variable "stripe_secret_key" {
+  description = "Stripe secret key, test mode (sk_test_...)"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_publishable_key" {
+  description = "Stripe publishable key, test mode (pk_test_...) — public, safe in the web bundle"
+  type        = string
+}
+
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret for the marketplace endpoint (whsec_...)"
+  type        = string
+  sensitive   = true
+}

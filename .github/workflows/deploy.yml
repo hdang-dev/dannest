@@ -25,6 +25,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       core: ${{ steps.filter.outputs.core }}
       notification: ${{ steps.filter.outputs.notification }}
+      marketplace: ${{ steps.filter.outputs.marketplace }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -37,6 +38,8 @@ jobs:
               - 'services/core/**'
             notification:
               - 'services/notification/**'
+            marketplace:
+              - 'services/marketplace/**'
 
   # =============================== WEB ===============================
   check-web:
@@ -81,6 +84,8 @@ jobs:
           file: ./web/Dockerfile
           push: true
           tags: ${{ steps.vars.outputs.image }}
+          # NEXT_PUBLIC_MARKETPLACE_API_URL / NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY join this
+          # list once web/Dockerfile actually declares those ARGs (web isn't touched yet).
           build-args: |
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
@@ -243,3 +248,64 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"imageUrl":"${{ needs.build-notification.outputs.image }}"}' \
             "https://api.render.com/v1/services/srv-d9mqrofqj5pc73dk07k0/deploys"
+
+  # =========================== MARKETPLACE ===========================
+  check-marketplace:
+    needs: changes
+    if: ${{ needs.changes.outputs.marketplace == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/marketplace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/marketplace/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  build-marketplace:
+    needs: [changes, check-marketplace]
+    if: ${{ needs.changes.outputs.marketplace == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: vars
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${{ env.REGISTRY }}/$owner/marketplace:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./services/marketplace
+          file: ./services/marketplace/Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.image }}
+
+  # TODO: no Render service exists yet for marketplace (infra/main.tf declares it but
+  # it hasn't been created/applied — see the NOTE at the top of that file). Fill in the
+  # real srv-... id below and drop the `if: false` once it's live; until then this job
+  # is a deliberate no-op so a push to services/marketplace/** doesn't fail CI on a 404.
+  deploy-marketplace:
+    needs: [build-marketplace]
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — marketplace (exact image from CI)
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"imageUrl":"${{ needs.build-marketplace.outputs.image }}"}' \
+            "https://api.render.com/v1/services/srv-REPLACE-ME/deploys"
