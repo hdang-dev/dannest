@@ -6,12 +6,27 @@
 // purchase_initiated) -> Core validates and replies -> settle (transfer the
 // creator's cut) or refund. Two compensation paths once the saga is running: Core
 // rejects (refund), or Core grants but the settle step itself fails, e.g. the
-// creator never finished Connect onboarding (refund AND, eventually, tell Core to
-// revoke — that revoke listener is phase 5, not built yet).
+// creator never finished Connect onboarding (refund, and tell Core via
+// mkt.membership.settle_failed so it can revoke the grant it already made — see
+// MembershipRevokedListener on Core's side).
+//
+// Every handler below follows the same shape: do the fallible external work (a
+// Stripe call) FIRST, and only claim the inbox event + commit local state once that
+// has actually succeeded, inside one transaction. Claiming up front, before work
+// that can still fail, would mark the event "done" forever the moment any one
+// attempt hit a transient error — money charged or owed, with no record of it and
+// no way to retry, since a redelivery (or a by-hand DLQ replay) would find the event
+// already claimed and skip straight past it. Stripe idempotency keys on the outgoing
+// calls are the other half of this: they make a genuine retry of the same logical
+// step (a race between two deliveries, or a hand replay) reuse the original
+// transfer/refund instead of moving money twice.
 import { BadRequestError, NotFoundError } from "../errors";
-import { claim } from "../inbox/idempotency";
+import { claimInTransaction } from "../inbox/idempotency";
+import { withTransaction } from "../db/transaction";
 import { requireConnectedAccount } from "../connect/connectService";
 import { stripe } from "../stripe/client";
+import { writeOutboxEvent } from "../outbox/writer";
+import { randomUUID } from "crypto";
 import MembershipPurchase, { MembershipPurchaseDocument } from "./MembershipPurchase";
 import { startSagaFromCharge } from "./sagaStart";
 
@@ -73,13 +88,12 @@ export async function getPurchase(purchaseId: string): Promise<MembershipPurchas
 /**
  * Called by the Stripe webhook (see webhookController) once payment truly succeeded —
  * this is where the saga's first step actually happens: mark CHARGED and queue
- * purchase_initiated, atomically. See sagaStart.ts for why this needs its own
- * idempotency guard distinct from the RabbitMQ inbox (a webhook redelivery has
- * nothing to do with message-broker delivery).
+ * purchase_initiated. The `status !== "PENDING_PAYMENT"` guard is what actually makes
+ * a webhook redelivery safe (a second delivery finds it already CHARGED and no-ops);
+ * the inbox claim inside startSagaFromCharge is a second, belt-and-suspenders layer
+ * for the narrow case of two deliveries racing each other before either has saved.
  */
 export async function markChargedAndStartSaga(stripeEventId: string, paymentIntentId: string): Promise<void> {
-  if (!(await claim(stripeEventId, "marketplace.stripe.webhook"))) return; // Stripe redelivers webhooks too
-
   const purchase = await MembershipPurchase.findOne({ stripePaymentIntentId: paymentIntentId });
   if (!purchase) {
     console.error(`payment_intent.succeeded for unknown PaymentIntent ${paymentIntentId}`);
@@ -87,7 +101,7 @@ export async function markChargedAndStartSaga(stripeEventId: string, paymentInte
   }
   if (purchase.status !== "PENDING_PAYMENT") return; // already handled
 
-  await startSagaFromCharge(purchase);
+  await startSagaFromCharge(purchase, stripeEventId);
 }
 
 /** The card was declined, expired, etc. — nothing was ever charged, nothing to compensate. */
@@ -96,14 +110,15 @@ export async function markPaymentFailed(
   paymentIntentId: string,
   reason: string | null,
 ): Promise<void> {
-  if (!(await claim(stripeEventId, "marketplace.stripe.webhook"))) return;
-
   const purchase = await MembershipPurchase.findOne({ stripePaymentIntentId: paymentIntentId });
   if (!purchase || purchase.status !== "PENDING_PAYMENT") return;
 
-  purchase.status = "PAYMENT_FAILED";
-  purchase.reason = reason;
-  await purchase.save();
+  await withTransaction(async (session) => {
+    if (!(await claimInTransaction(session, stripeEventId, "marketplace.stripe.webhook"))) return;
+    purchase.status = "PAYMENT_FAILED";
+    purchase.reason = reason;
+    await purchase.save({ session });
+  });
 }
 
 // ---- saga replies (Core's half of the round trip) ----
@@ -122,8 +137,6 @@ interface RejectedPayload {
 
 /** Core granted the membership — pay the creator, or compensate if we can't. */
 export async function handleActivated(payload: ActivatedPayload): Promise<void> {
-  if (!(await claim(payload.eventId, "marketplace.membership"))) return;
-
   const purchase = await MembershipPurchase.findById(payload.purchaseId);
   if (!purchase) {
     console.error(`core.membership.activated for unknown purchase ${payload.purchaseId}`);
@@ -133,42 +146,69 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
     return; // already settled/refunded — a purchase is worth guarding twice, it's money
   }
 
+  let transfer;
   try {
     const account = await requireConnectedAccount(payload.ownerId);
     // A plain platform-balance -> connected-account transfer, not tied structurally to
     // the original charge (Stripe's "separate charges and transfers" pattern would use
     // transfer_group for that) — simpler, and enough to demonstrate the saga's settle
-    // step without more Stripe-specific plumbing than the lesson needs.
-    const transfer = await stripe.transfers.create({
-      amount: purchase.priceCents,
-      currency: "usd",
-      destination: account.stripeAccountId,
-    });
-    purchase.status = "CONFIRMED";
-    purchase.stripeTransferId = transfer.id;
-    await purchase.save();
+    // step without more Stripe-specific plumbing than the lesson needs. The idempotency
+    // key means a genuine retry (two deliveries racing, or a hand replay from the DLQ)
+    // reuses this same transfer instead of paying the creator twice.
+    transfer = await stripe.transfers.create(
+      { amount: purchase.priceCents, currency: "usd", destination: account.stripeAccountId },
+      { idempotencyKey: `membership-transfer:${purchase.id}` },
+    );
   } catch (err) {
     // Compensation #2: Core already granted access, but we can't pay the creator (e.g.
-    // they never finished Connect onboarding). Refund the buyer — and Core needs to
-    // hear about it so it can revoke the grant it already made (phase 5: not built yet,
-    // so today this leaves a real, documented inconsistency window until that exists).
+    // they never finished Connect onboarding). Refund the buyer, and tell Core via the
+    // outbox so it can revoke the grant it already made.
     console.error(`Settle failed for purchase ${purchase.id}, refunding buyer:`, err);
-    await stripe.refunds.create({ payment_intent: purchase.stripePaymentIntentId });
-    purchase.status = "REFUNDED";
-    purchase.reason = "settle_failed";
-    await purchase.save();
+    await stripe.refunds.create(
+      { payment_intent: purchase.stripePaymentIntentId },
+      { idempotencyKey: `membership-settle-refund:${purchase.id}` },
+    );
+    await withTransaction(async (session) => {
+      if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+      purchase.status = "REFUNDED";
+      purchase.reason = "settle_failed";
+      await purchase.save({ session });
+      await writeOutboxEvent(session, "MEMBERSHIP_PURCHASE", purchase.id, "mkt.membership.settle_failed", {
+        eventId: randomUUID(),
+        purchaseId: purchase.id,
+      });
+    });
+    return;
   }
+
+  // The transfer already succeeded at this point — committing that fact is kept
+  // outside the try/catch above on purpose. If THIS step fails (a Mongo hiccup, not
+  // the transfer itself), the function throws normally and the caller redelivers;
+  // retrying re-enters this same function with status still "CHARGED", so it repeats
+  // the (idempotency-keyed, so safe) transfer call and then commits. Catching it here
+  // instead would misread "couldn't save" as "couldn't pay the creator" and refund a
+  // buyer whose creator was, in fact, already paid.
+  await withTransaction(async (session) => {
+    if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+    purchase.status = "CONFIRMED";
+    purchase.stripeTransferId = transfer.id;
+    await purchase.save({ session });
+  });
 }
 
 /** Core rejected the purchase — compensation #1: refund the buyer, nothing was ever granted. */
 export async function handleRejected(payload: RejectedPayload): Promise<void> {
-  if (!(await claim(payload.eventId, "marketplace.membership"))) return;
-
   const purchase = await MembershipPurchase.findById(payload.purchaseId);
   if (!purchase || purchase.status !== "CHARGED") return;
 
-  await stripe.refunds.create({ payment_intent: purchase.stripePaymentIntentId });
-  purchase.status = "REFUNDED";
-  purchase.reason = payload.reason;
-  await purchase.save();
+  await stripe.refunds.create(
+    { payment_intent: purchase.stripePaymentIntentId },
+    { idempotencyKey: `membership-reject-refund:${purchase.id}` },
+  );
+  await withTransaction(async (session) => {
+    if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+    purchase.status = "REFUNDED";
+    purchase.reason = payload.reason;
+    await purchase.save({ session });
+  });
 }

@@ -12,6 +12,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * a charge itself. One membership per purchase, 30 days, no renewal (see the marketplace
  * plan's scope cuts).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MembershipService {
@@ -60,6 +62,23 @@ public class MembershipService {
                 event.purchaseId(),
                 "core.membership.activated",
                 new MembershipActivatedEvent(UUID.randomUUID(), event.purchaseId(), collection.getOwnerId()));
+    }
+
+    /**
+     * Compensation #2's other half (see {@link MembershipRevokedListener}): marketplace
+     * already refunded this buyer because it couldn't pay the creator, so undo the grant
+     * this same service made in {@link #processPurchase}. {@code revoke()} is itself
+     * idempotent (a no-op once already revoked), so redelivery of this event is safe even
+     * without the listener's own inbox claim.
+     */
+    @Transactional
+    public void revokeForSettleFailure(String purchaseId) {
+        membershipRepository.findByPurchaseId(purchaseId).ifPresentOrElse(
+                membership -> {
+                    membership.revoke();
+                    membershipRepository.save(membership);
+                },
+                () -> log.warn("settle_failed for unknown purchase {}, nothing to revoke", purchaseId));
     }
 
     /** {@code null} = ok to grant; otherwise the reason it's being rejected. */
