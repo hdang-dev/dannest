@@ -166,12 +166,10 @@ resource "render_web_service" "marketplace" {
 
     # Message broker — same CloudAMQP instance Core publishes to; marketplace both
     # publishes (mkt.* outbox events) and consumes (core.membership.* saga replies).
-    RABBITMQ_HOST        = { value = var.rabbitmq_host }
-    RABBITMQ_PORT        = { value = "5671" }
-    RABBITMQ_USERNAME    = { value = var.rabbitmq_username }
-    RABBITMQ_PASSWORD    = { value = var.rabbitmq_password }
-    RABBITMQ_VHOST       = { value = var.rabbitmq_vhost }
-    RABBITMQ_SSL_ENABLED = { value = "true" }
+    # This service (a Node app, not Spring) takes one amqps:// URL, not split host/port.
+    RABBITMQ_URL = {
+      value = "amqps://${var.rabbitmq_username}:${var.rabbitmq_password}@${var.rabbitmq_host}/${var.rabbitmq_vhost}"
+    }
 
     # Stripe (test mode) — Connect onboarding, charges, transfers, refunds.
     STRIPE_SECRET_KEY          = { value = var.stripe_secret_key }
