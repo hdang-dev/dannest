@@ -9,5 +9,16 @@ export const API_URL =
 export const NOTIFICATION_API_URL =
   process.env.NEXT_PUBLIC_NOTIFICATION_API_URL ?? "http://localhost:8091";
 
+// The marketplace service is a separate deployable with its own origin — see
+// services/marketplace/. Membership purchases and Stripe Connect onboarding go
+// straight there.
+export const MARKETPLACE_API_URL =
+  process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:8092";
+
 export const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
+// Publishable, not secret — safe to ship in client JS by design. Used by Stripe
+// Elements to render the real card-entry form (see MembershipCheckoutModal).
+export const STRIPE_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";

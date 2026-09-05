@@ -52,8 +52,12 @@ export default function CollectionCard({ collection: c, onEdit, onArchive, onRes
             {c.name}
           </p>
           <p className="text-xs text-slate-400">
-            {c.visibility === "PRIVATE" ? "Private" : "Public"} · Edited{" "}
-            {formatRelativeTime(c.updatedAt)}
+            {c.visibility === "PRIVATE"
+              ? "Private"
+              : c.visibility === "MEMBERS_ONLY"
+                ? `Members-only · $${(c.priceCents! / 100).toFixed(2)}`
+                : "Public"}{" "}
+            · Edited {formatRelativeTime(c.updatedAt)}
           </p>
         </Link>
 

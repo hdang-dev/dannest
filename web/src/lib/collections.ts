@@ -4,7 +4,7 @@
 import { apiFetch } from "./api";
 import type { Crop } from "./media";
 
-export type Visibility = "PUBLIC" | "PRIVATE";
+export type Visibility = "PUBLIC" | "PRIVATE" | "MEMBERS_ONLY";
 
 /** Whose collections to list: your own (MINE) or every user's public ones (PUBLIC). */
 export type CollectionScope = "MINE" | "PUBLIC";
@@ -19,6 +19,11 @@ export type Collection = {
   name: string;
   description: string | null;
   visibility: Visibility;
+  // Set only for MEMBERS_ONLY collections; immutable once chosen (see CollectionFormModal).
+  priceCents: number | null;
+  // True for a non-owner viewer with an active membership. Always false for the owner
+  // (they don't need one) and for non-MEMBERS_ONLY collections.
+  viewerHasMembership: boolean;
   coverMediaId: string | null;
   coverUrl: string | null;
   coverCrop: Crop | null;
@@ -40,14 +45,20 @@ export type CreateCollectionInput = {
   name: string;
   description?: string;
   visibility?: Visibility;
+  // Required (>0) when visibility is MEMBERS_ONLY, and rejected otherwise. Chosen once
+  // at creation — there's no way to set it on an update, matching the backend's
+  // immutability rule (see UpdateCollectionInput below, which has no priceCents field).
+  priceCents?: number;
   coverMediaId?: string; // a media asset (uploaded or external)
-  // Required alongside coverMediaId — Core stores this snapshot instead of looking
-  // the media up itself (see docs/tech/architecture-flows.md's media-split notes).
+  // Required alongside coverMediaId — Core stores this snapshot rather than joining
+  // to the media table on every read (see docs/tech/db-schema.md's *Image crop* notes).
   coverUrl?: string;
   coverCrop?: Crop;
 };
 
-export type UpdateCollectionInput = Partial<CreateCollectionInput> & {
+// Omits priceCents — the backend has no way to set it on an update at all (it's
+// immutable once a collection goes MEMBERS_ONLY), so it isn't offered here either.
+export type UpdateCollectionInput = Partial<Omit<CreateCollectionInput, "priceCents">> & {
   clearCover?: boolean; // remove the cover
 };
 

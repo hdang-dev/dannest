@@ -49,7 +49,7 @@ export default function CollectionsStrip() {
               className="w-32 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-teal-400 dark:border-slate-800 dark:bg-slate-900"
             >
               <div
-                className="grid aspect-16/10 place-items-center text-3xl"
+                className="relative grid aspect-16/10 place-items-center text-3xl"
                 style={
                   c.coverUrl
                     ? coverStyle(c.coverUrl, c.coverCrop)
@@ -59,6 +59,11 @@ export default function CollectionsStrip() {
                 {!c.coverUrl && (
                   <span className="font-bold text-white/90 drop-shadow-md">
                     {c.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {c.visibility === "MEMBERS_ONLY" && (
+                  <span className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                    ${(c.priceCents! / 100).toFixed(2)}
                   </span>
                 )}
               </div>

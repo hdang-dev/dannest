@@ -36,6 +36,17 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
   const [name, setName] = useState(collection?.name ?? "");
   const [description, setDescription] = useState(collection?.description ?? "");
   const [visibility, setVisibility] = useState<Visibility>(collection?.visibility ?? "PUBLIC");
+  // Dollars, as typed — converted to cents on submit. Only meaningful (and only
+  // editable) when creating a MEMBERS_ONLY collection; price is immutable afterward,
+  // same as visibility itself — see CreateCollectionInput's priceCents comment.
+  const [priceDollars, setPriceDollars] = useState(
+    collection?.priceCents != null ? (collection.priceCents / 100).toFixed(2) : "",
+  );
+  // A members-only collection's type (and price) can never change — mirrors the
+  // immutability CollectionService.update enforces server-side.
+  const membersOnlyLocked = mode === "edit" && collection?.visibility === "MEMBERS_ONLY";
+  const priceCents = Math.round(parseFloat(priceDollars || "0") * 100);
+  const priceValid = visibility !== "MEMBERS_ONLY" || priceCents > 0;
 
   const initialCover: Cover | null = collection?.coverMediaId
     ? {
@@ -57,7 +68,8 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSave = name.trim().length > 0 && !saving && (editing === null || pendingCrop !== null);
+  const canSave =
+    name.trim().length > 0 && priceValid && !saving && (editing === null || pendingCrop !== null);
 
   function closeChooser() {
     setChooserOpen(false);
@@ -113,6 +125,12 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
       description: description.trim() || undefined,
       visibility,
     };
+    // Only sent on create — the backend rejects priceCents on update entirely (see
+    // UpdateCollectionInput), so an edit of an already-MEMBERS_ONLY collection just
+    // never touches it, leaving the original price in place.
+    if (mode === "create" && visibility === "MEMBERS_ONLY") {
+      payload.priceCents = priceCents;
+    }
 
     try {
       if (editing && pendingCrop) {
@@ -331,22 +349,60 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
         <label className="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400">
           Visibility
         </label>
-        <div className="mt-1 inline-flex rounded-xl border border-slate-200 p-0.5 dark:border-slate-700">
-          {(["PUBLIC", "PRIVATE"] as Visibility[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setVisibility(v)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
-                visibility === v
-                  ? "bg-teal-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-              }`}
-            >
-              {v === "PUBLIC" ? "Public" : "Private"}
-            </button>
-          ))}
-        </div>
+        {membersOnlyLocked ? (
+          <p className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+            Members-only · ${(collection!.priceCents! / 100).toFixed(2)} — a members-only
+            collection&apos;s type and price can&apos;t be changed once set.
+          </p>
+        ) : (
+          <>
+            <div className="mt-1 inline-flex rounded-xl border border-slate-200 p-0.5 dark:border-slate-700">
+              {/* MEMBERS_ONLY only offered on create — the backend rejects entering it
+                  via an update just as it rejects leaving it, so don't offer a choice
+                  an existing collection could never actually take. */}
+              {(mode === "create"
+                ? (["PUBLIC", "PRIVATE", "MEMBERS_ONLY"] as Visibility[])
+                : (["PUBLIC", "PRIVATE"] as Visibility[])
+              ).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVisibility(v)}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                    visibility === v
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {v === "PUBLIC" ? "Public" : v === "PRIVATE" ? "Private" : "Members-only"}
+                </button>
+              ))}
+            </div>
+
+            {visibility === "MEMBERS_ONLY" && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Price to join <span className="text-slate-400">(USD, one-time)</span>
+                </label>
+                <div className="mt-1 flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-teal-400 dark:border-slate-700 dark:bg-slate-800">
+                  <span className="text-sm text-slate-400">$</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={priceDollars}
+                    onChange={(e) => setPriceDollars(e.target.value)}
+                    placeholder="5.00"
+                    className="w-full bg-transparent text-sm outline-none"
+                  />
+                </div>
+                {!priceValid && priceDollars !== "" && (
+                  <p className="mt-1 text-xs text-rose-500">Price must be greater than $0.</p>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
         {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
