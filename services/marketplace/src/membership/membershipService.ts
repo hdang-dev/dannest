@@ -160,10 +160,16 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
       { idempotencyKey: `membership-transfer:${purchase.id}` },
     );
   } catch (err) {
-    // Compensation #2: Core already granted access, but we can't pay the creator (e.g.
-    // they never finished Connect onboarding). Refund the buyer, and tell Core via the
-    // outbox so it can revoke the grant it already made.
-    console.error(`Settle failed for purchase ${purchase.id}, refunding buyer:`, err);
+    // Compensation #2: Core already granted access, but we can't pay the creator.
+    // Refund the buyer, and tell Core via the outbox so it can revoke the grant it
+    // already made. Two genuinely different causes get two different reasons here —
+    // "the creator never connected Stripe" (requireConnectedAccount's own error) is
+    // not the same situation as "Stripe rejected the transfer for some other reason"
+    // (a test-mode balance quirk, a network blip, anything else), and the frontend
+    // shows a different message for each — conflating them told a connected creator's
+    // buyer "this creator hasn't set up payouts," which is simply false.
+    const reason = err instanceof BadRequestError ? "no_connected_account" : "settle_failed";
+    console.error(`Settle failed (${reason}) for purchase ${purchase.id}, refunding buyer:`, err);
     await stripe.refunds.create(
       { payment_intent: purchase.stripePaymentIntentId },
       { idempotencyKey: `membership-settle-refund:${purchase.id}` },
@@ -171,7 +177,7 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
     await withTransaction(async (session) => {
       if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
       purchase.status = "REFUNDED";
-      purchase.reason = "settle_failed";
+      purchase.reason = reason;
       await purchase.save({ session });
       await writeOutboxEvent(session, "MEMBERSHIP_PURCHASE", purchase.id, "mkt.membership.settle_failed", {
         eventId: randomUUID(),

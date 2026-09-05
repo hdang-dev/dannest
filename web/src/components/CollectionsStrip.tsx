@@ -63,7 +63,9 @@ export default function CollectionsStrip() {
                 )}
                 {c.visibility === "MEMBERS_ONLY" && (
                   <span className="absolute right-1.5 top-1.5 rounded-full bg-slate-900/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
-                    ${(c.priceCents! / 100).toFixed(2)}
+                    {/* Once unlocked, the price no longer matters to this viewer — a
+                        badge saying they're in reads better than a dollar figure. */}
+                    {c.viewerHasMembership ? "Membership" : `$${(c.priceCents! / 100).toFixed(2)}`}
                   </span>
                 )}
               </div>

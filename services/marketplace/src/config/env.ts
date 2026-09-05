@@ -17,10 +17,11 @@ export const env = {
     secretKey: process.env.STRIPE_SECRET_KEY || "",
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
-    connectRefreshUrl:
-      process.env.STRIPE_CONNECT_REFRESH_URL || "http://localhost:3000/settings/payouts",
+    // Stripe-hosted onboarding bounces back here — the real settings UI lives on the
+    // profile page (see ConnectSettingsCard in web/), there's no dedicated /settings route.
+    connectRefreshUrl: process.env.STRIPE_CONNECT_REFRESH_URL || "http://localhost:3000/profile",
     connectReturnUrl:
-      process.env.STRIPE_CONNECT_RETURN_URL || "http://localhost:3000/settings/payouts?connected=1",
+      process.env.STRIPE_CONNECT_RETURN_URL || "http://localhost:3000/profile?connected=1",
   },
 };
 

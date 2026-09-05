@@ -56,6 +56,27 @@ export default function CollectionPage() {
       .catch(() => setPosts([]));
   }
 
+  // After a settle-fail refund, Core still has to consume a separate async event to
+  // revoke the membership it already granted — that can lag behind the purchase
+  // itself reaching REFUNDED by a beat (they're two independent hops in the saga,
+  // not one atomic step). A single immediate reload can land in that gap and show
+  // already-refunded content as still unlocked. Poll briefly until the collection
+  // agrees access is gone, instead of trusting one read right after the charge.
+  async function reloadUntilRevoked() {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const c = await getCollection(id).catch(() => null);
+      if (c) {
+        setCollection(c);
+        if (!c.viewerHasMembership) break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    listByCollection(id, { size: 50 })
+      .then((page) => setPosts(page.content))
+      .catch(() => setPosts([]));
+  }
+
   // Load the real collection + its posts from the backend.
   useEffect(() => {
     let cancelled = false;
@@ -86,21 +107,35 @@ export default function CollectionPage() {
     // truth, and the locked panel should never sit stale after an attempt resolves.
     if (settled.status === "CONFIRMED") {
       notify("You're in! Refreshing…");
+      reload();
     } else if (settled.reason === "Already an active member") {
       // Not really a failure from the buyer's point of view — they already have
       // access, this specific (redundant) charge is just the one being refunded.
       notify("You already have access to this collection.");
-    } else if (settled.reason === "settle_failed") {
+      reload();
+    } else if (settled.reason === "no_connected_account") {
       notify(
         "This creator hasn't finished setting up payouts yet, so you've been refunded.",
         "error",
       );
+      // Core already granted, then has to revoke — see reloadUntilRevoked's comment.
+      reloadUntilRevoked();
+    } else if (settled.reason === "settle_failed") {
+      // A real settle failure that ISN'T "creator never connected" (a Stripe error,
+      // a transient issue) — don't blame the creator's setup for something that may
+      // not be their fault at all.
+      notify(
+        "Something went wrong completing this purchase, so you've been refunded. Please try again shortly.",
+        "error",
+      );
+      reloadUntilRevoked();
     } else {
       // Any other rejection reason from Core (price mismatch, archived, etc.) — not
       // worth surfacing verbatim to a buyer, it's an internal validation detail.
+      // Core never granted anything for these, so there's no revoke to wait on.
       notify("Purchase didn't go through — you've been refunded.", "error");
+      reload();
     }
-    reload();
   }
 
   const [from, to] = gradientFor(id);
@@ -315,7 +350,9 @@ export default function CollectionPage() {
                 {collection.visibility === "PRIVATE"
                   ? "Private · "
                   : collection.visibility === "MEMBERS_ONLY"
-                    ? `Members-only · $${(collection.priceCents! / 100).toFixed(2)} · `
+                    ? collection.viewerHasMembership
+                      ? "Membership · "
+                      : `Members-only · $${(collection.priceCents! / 100).toFixed(2)} · `
                     : ""}
                 {locked ? "—" : (posts?.length ?? 0)} {(posts?.length ?? 0) === 1 && !locked ? "post" : "posts"}
               </p>
