@@ -52,7 +52,13 @@ public class CollectionService {
                 .priceCents(visibility == Visibility.MEMBERS_ONLY ? request.priceCents() : null)
                 .build();
         collection.setDescription(request.description());
-        applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
+        // Pre-existing bug, fixed here: this called applyCover unconditionally, which
+        // throws when no cover is given at all — but a cover has always been optional
+        // (see CreateCollectionRequest's javadoc). Guard it the same way update() already
+        // does.
+        if (request.coverMediaId() != null) {
+            applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
+        }
         return toResponse(collectionRepository.save(collection), userId);
     }
 
