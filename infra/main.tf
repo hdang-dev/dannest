@@ -177,8 +177,8 @@ resource "render_web_service" "marketplace" {
     STRIPE_SECRET_KEY          = { value = var.stripe_secret_key }
     STRIPE_PUBLISHABLE_KEY     = { value = var.stripe_publishable_key }
     STRIPE_WEBHOOK_SECRET      = { value = var.stripe_webhook_secret }
-    STRIPE_CONNECT_REFRESH_URL = { value = "${local.web_url}/settings/payouts" }
-    STRIPE_CONNECT_RETURN_URL  = { value = "${local.web_url}/settings/payouts?connected=1" }
+    STRIPE_CONNECT_REFRESH_URL = { value = "${local.web_url}/profile" }
+    STRIPE_CONNECT_RETURN_URL  = { value = "${local.web_url}/profile?connected=1" }
   }
 }
 
