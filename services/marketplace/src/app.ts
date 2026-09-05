@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { env, stripeConfigured } from "./config/env";
 import errorHandler from "./middleware/errorHandler";
+import connectRoutes from "./connect/connect.routes";
 
 const app = express();
 
@@ -15,6 +16,10 @@ app.use(express.json());
 
 // Matches Core's /actuator/health and Notification's — Render polls this.
 app.get("/healthz", (req, res) => res.json({ status: "ok" }));
+
+// On Express 5, not 4: a rejected promise from an async route handler is forwarded to
+// errorHandler automatically. Controllers never need try/catch + next(err) themselves.
+app.use("/api/v1/marketplace/connect", connectRoutes);
 
 if (!stripeConfigured) {
   // Don't fail startup — only payment endpoints need Stripe. Warn loudly instead,
