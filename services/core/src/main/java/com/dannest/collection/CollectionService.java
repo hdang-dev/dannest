@@ -7,6 +7,8 @@ import com.dannest.common.BadRequestException;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.membership.CollectionMembership;
+import com.dannest.membership.CollectionMembershipRepository;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
 import java.util.ArrayList;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -36,25 +39,30 @@ public class CollectionService {
 
     private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
+    private final CollectionMembershipRepository membershipRepository;
 
     public CollectionResponse create(UUID userId, CreateCollectionRequest request) {
         Visibility visibility = request.visibility() != null ? request.visibility() : Visibility.PUBLIC;
+        validatePrice(visibility, request.priceCents());
 
         Collection collection = Collection.builder()
                 .ownerId(userId)
                 .name(request.name())
                 .visibility(visibility)
+                .priceCents(visibility == Visibility.MEMBERS_ONLY ? request.priceCents() : null)
                 .build();
         collection.setDescription(request.description());
         applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
-        return toResponse(collectionRepository.save(collection));
+        return toResponse(collectionRepository.save(collection), userId);
     }
 
     /**
      * List collections with filters:
      * <ul>
-     *   <li>{@code scope=MINE} — the caller's own; {@code visibility} narrows to PUBLIC/PRIVATE (null = all)</li>
-     *   <li>{@code scope=PUBLIC} — every user's public collections (the home feed); {@code visibility} is ignored</li>
+     *   <li>{@code scope=MINE} — the caller's own; {@code visibility} narrows to PUBLIC/PRIVATE/MEMBERS_ONLY (null = all)</li>
+     *   <li>{@code scope=PUBLIC} — every user's PUBLIC and MEMBERS_ONLY collections (the home feed —
+     *       MEMBERS_ONLY is browsable so buyers can find it; its *posts* are gated separately,
+     *       see {@code PostService}); {@code visibility} is ignored</li>
      * </ul>
      * Results exclude archived collections and default to newest-first when unsorted.
      */
@@ -76,9 +84,11 @@ public class CollectionService {
         // never becomes a nullable SQL parameter (which Postgres can't type-infer).
         List<Specification<Collection>> filters = new ArrayList<>();
         if (scope == CollectionScope.PUBLIC) {
-            // The public feed is always active + public.
+            // The public feed is always active, and browsable (PUBLIC or MEMBERS_ONLY —
+            // never PRIVATE). A MEMBERS_ONLY collection's *posts* stay gated regardless;
+            // this only controls whether the collection itself (name/cover/price) is listed.
             filters.add((root, cq, cb) -> cb.isNull(root.get("archivedAt")));
-            filters.add((root, cq, cb) -> cb.equal(root.get("visibility"), Visibility.PUBLIC));
+            filters.add((root, cq, cb) -> root.get("visibility").in(Visibility.PUBLIC, Visibility.MEMBERS_ONLY));
         } else {
             filters.add((root, cq, cb) -> cb.equal(root.get("ownerId"), userId));
             // archived == true → archived only; otherwise active only.
@@ -99,27 +109,36 @@ public class CollectionService {
         Specification<Collection> spec = Specification.allOf(filters);
         var page = collectionRepository.findAll(spec, effective);
         return new PagedResponse<>(
-                toResponses(page.getContent()), page.getNumber(), page.getSize(),
+                toResponses(page.getContent(), userId), page.getNumber(), page.getSize(),
                 page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
 
     @Transactional(readOnly = true)
     public CollectionResponse get(UUID userId, UUID collectionId) {
         Collection collection = findVisible(userId, collectionId);
-        return toResponse(collection);
+        return toResponse(collection, userId);
     }
 
     public CollectionResponse update(UUID userId, UUID collectionId, UpdateCollectionRequest request) {
         Collection collection = findOwned(userId, collectionId);
 
+        if (request.visibility() != null) {
+            // MEMBERS_ONLY is a one-way door — chosen at creation, never entered or left
+            // afterward. A membership purchase would otherwise become worthless (-> PUBLIC)
+            // or lock a paying buyer out (-> PRIVATE); price is likewise frozen with it
+            // (there's no priceCents field on UpdateCollectionRequest at all).
+            boolean touchesMembersOnly = collection.getVisibility() == Visibility.MEMBERS_ONLY
+                    || request.visibility() == Visibility.MEMBERS_ONLY;
+            if (touchesMembersOnly && request.visibility() != collection.getVisibility()) {
+                throw new BadRequestException("A members-only collection's type can't be changed.");
+            }
+            collection.setVisibility(request.visibility());
+        }
         if (request.name() != null) {
             collection.setName(request.name());
         }
         if (request.description() != null) {
             collection.setDescription(request.description());
-        }
-        if (request.visibility() != null) {
-            collection.setVisibility(request.visibility());
         }
         // clearCover removes the cover; otherwise a new coverMediaId replaces it.
         if (Boolean.TRUE.equals(request.clearCover())) {
@@ -128,7 +147,7 @@ public class CollectionService {
         } else if (request.coverMediaId() != null) {
             applyCover(collection, request.coverMediaId(), request.coverUrl(), request.coverCrop());
         }
-        return toResponse(collection);
+        return toResponse(collection, userId);
     }
 
     /** Soft-delete: archive the collection so it's hidden from listings but recoverable. */
@@ -145,16 +164,16 @@ public class CollectionService {
 
     // ----- mapping -------------------------------------------------------------------
 
-    CollectionResponse toResponse(Collection collection) {
-        return toResponses(List.of(collection)).get(0);
+    CollectionResponse toResponse(Collection collection, UUID viewerId) {
+        return toResponses(List.of(collection), viewerId).get(0);
     }
 
     /**
-     * Map a page of collections to responses, batching the owner lookup into a single
-     * grouped query rather than one per collection.
+     * Map a page of collections to responses, batching the owner lookup and the viewer's
+     * membership lookup into one grouped query each rather than one per collection.
      * Public — {@link com.dannest.follow.FollowService} reuses it for followed collections.
      */
-    public List<CollectionResponse> toResponses(List<Collection> collections) {
+    public List<CollectionResponse> toResponses(List<Collection> collections, UUID viewerId) {
         if (collections.isEmpty()) {
             return List.of();
         }
@@ -167,12 +186,33 @@ public class CollectionService {
             ownersById.put(u.getId(), u);
         }
 
+        List<UUID> membersOnlyIds = collections.stream()
+                .filter(c -> c.getVisibility() == Visibility.MEMBERS_ONLY)
+                .map(Collection::getId)
+                .toList();
+        Set<UUID> memberOf = membersOnlyIds.isEmpty()
+                ? Set.of()
+                : membershipRepository.findByUserIdAndCollectionIdInAndRevokedAtIsNull(viewerId, membersOnlyIds)
+                        .stream()
+                        .map(CollectionMembership::getCollectionId)
+                        .collect(Collectors.toSet());
+
         return collections.stream()
-                .map(c -> CollectionResponse.from(c, ownersById.get(c.getOwnerId())))
+                .map(c -> CollectionResponse.from(c, ownersById.get(c.getOwnerId()), memberOf.contains(c.getId())))
                 .toList();
     }
 
     // ----- helpers -------------------------------------------------------------------
+
+    private static void validatePrice(Visibility visibility, Integer priceCents) {
+        if (visibility == Visibility.MEMBERS_ONLY) {
+            if (priceCents == null || priceCents <= 0) {
+                throw new BadRequestException("priceCents is required (> 0) for a MEMBERS_ONLY collection");
+            }
+        } else if (priceCents != null) {
+            throw new BadRequestException("priceCents is only valid for a MEMBERS_ONLY collection");
+        }
+    }
 
     /** Load a collection the caller is allowed to view: it's PUBLIC, or the caller owns it. */
     private Collection findVisible(UUID userId, UUID collectionId) {

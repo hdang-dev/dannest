@@ -82,7 +82,7 @@ public class FollowService {
                 .toList();
 
         return new PagedResponse<>(
-                collectionService.toResponses(ordered), page.getNumber(), page.getSize(),
+                collectionService.toResponses(ordered, userId), page.getNumber(), page.getSize(),
                 page.getTotalElements(), page.getTotalPages(), page.isLast());
     }
 

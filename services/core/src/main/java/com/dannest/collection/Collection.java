@@ -61,6 +61,12 @@ public class Collection extends BaseEntity {
     @Column(nullable = false, length = 20)
     private Visibility visibility = Visibility.PUBLIC;
 
+    /** Set only when {@code visibility == MEMBERS_ONLY}; null otherwise (DB check constraint
+     * enforces the pairing). Immutable once the collection is MEMBERS_ONLY — see
+     * {@link CollectionService#update}. */
+    @Column(name = "price_cents")
+    private Integer priceCents;
+
     @Column(name = "archived_at")
     private Instant archivedAt;
 

@@ -10,6 +10,8 @@ import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
 import com.dannest.follow.CollectionFollowRepository;
+import com.dannest.membership.CollectionMembership;
+import com.dannest.membership.CollectionMembershipRepository;
 import com.dannest.notification.ActivityType;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
@@ -25,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -68,6 +71,7 @@ public class PostService {
     private final CollectionRepository collectionRepository;
     private final UserRepository userRepository;
     private final CollectionFollowRepository collectionFollowRepository;
+    private final CollectionMembershipRepository membershipRepository;
     private final NotificationService notificationService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -436,13 +440,33 @@ public class PostService {
         return post;
     }
 
-    /** Whether the caller may view this post: its collection is PUBLIC, or the caller owns it / authored it. */
+    /**
+     * Whether the caller may view this post: its collection is PUBLIC, the caller owns it
+     * / authored it, or (MEMBERS_ONLY only) the caller has an active
+     * {@link CollectionMembership}. PRIVATE is never purchasable — owner/author only.
+     */
     private boolean isVisible(UUID userId, Post post) {
         Collection c = collectionRepository
                 .findById(post.getCollectionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + post.getCollectionId()));
         boolean owned = c.getOwnerId().equals(userId) || post.getAuthorId().equals(userId);
-        return c.getVisibility() != Visibility.PRIVATE || owned;
+        return isViewable(c, userId, owned);
+    }
+
+    /** Shared visibility rule for a resolved collection — see {@link #isVisible} / {@link #requireVisibleCollection}. */
+    private boolean isViewable(Collection collection, UUID userId, boolean owned) {
+        return switch (collection.getVisibility()) {
+            case PUBLIC -> true;
+            case PRIVATE -> owned;
+            case MEMBERS_ONLY -> owned || hasActiveMembership(userId, collection.getId());
+        };
+    }
+
+    private boolean hasActiveMembership(UUID userId, UUID collectionId) {
+        return membershipRepository
+                .findByUserIdAndCollectionIdAndRevokedAtIsNull(userId, collectionId)
+                .filter(m -> m.isActive(Instant.now()))
+                .isPresent();
     }
 
     /**
@@ -474,15 +498,16 @@ public class PostService {
     }
 
     /**
-     * Ensure the caller may view a collection (for its post list); 404 if private
-     * and not theirs.
+     * Ensure the caller may view a collection's posts; 404 if private and not theirs, or
+     * members-only and not owned/an active member.
      */
     private void requireVisibleCollection(UUID userId, UUID collectionId) {
         Collection collection = collectionRepository
                 .findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
         boolean owned = collection.getOwnerId().equals(userId);
-        if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
+        if (!isViewable(collection, userId, owned)) {
+            // Hide the existence of posts the caller isn't entitled to see either way.
             throw new ResourceNotFoundException("Collection not found: " + collectionId);
         }
     }

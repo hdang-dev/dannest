@@ -10,6 +10,10 @@ import jakarta.validation.constraints.Size;
  * <p>Every field is optional: a {@code null} field leaves the current value untouched.
  * Setting {@code coverMediaId} replaces the cover — send {@code coverUrl}/{@code coverCrop}
  * alongside it. {@code clearCover=true} removes it.
+ *
+ * <p>{@code visibility} can freely toggle PUBLIC &lt;-&gt; PRIVATE, but never transitions
+ * into or out of MEMBERS_ONLY (that includes price — not a field here at all, since it
+ * can't be set post-creation) — see {@code CollectionService.update}.
  */
 public record UpdateCollectionRequest(
         @Size(max = 120) String name,
