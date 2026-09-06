@@ -42,6 +42,16 @@ spring:
         # Default is 60s: with no broker reachable, that's how long a post/comment
         # request would hang before EventPublisher's catch kicks in. Fail fast instead.
         connection-timeout: 3000
+        # Global backstop to every listener's own AmqpRejectAndDontRequeueException:
+        # make "reject, don't requeue" (message -> the queue's DLQ) the default for
+        # ANY unhandled listener exception, so a listener that forgets to do it — or a
+        # stale deploy that predates the fix — still can't requeue-loop forever. One
+        # such loop redelivered a poison message ~400/s for days and blew the broker's
+        # monthly quota. Deliberately no retry: same "straight to the DLQ" policy the
+        # rest of this codebase already follows (see marketplace's rabbit/consume.ts).
+        listener:
+            simple:
+                default-requeue-rejected: false
 
     # --- File uploads (media) ---
     # Cap upload size; the frontend sends already-cropped WebP images.

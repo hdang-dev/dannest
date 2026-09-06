@@ -33,6 +33,16 @@ spring:
         virtual-host: ${RABBITMQ_VHOST:/}
         ssl:
             enabled: ${RABBITMQ_SSL_ENABLED:false} # hosted brokers (amqps://) set this true
+        # Global backstop to every listener's own AmqpRejectAndDontRequeueException:
+        # make "reject, don't requeue" (message -> the queue's DLQ) the default for
+        # ANY unhandled listener exception, so a listener that forgets to do it — or a
+        # stale deploy that predates the fix — still can't requeue-loop forever. A
+        # stale deploy of this service did exactly that: ~400 redeliveries/s for days,
+        # blowing the broker's monthly message quota. Deliberately no retry: same
+        # "straight to the DLQ" policy the rest of this codebase already follows.
+        listener:
+            simple:
+                default-requeue-rejected: false
 
 # --- Actuator (health/monitoring) ---
 management:
