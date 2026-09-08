@@ -24,12 +24,48 @@ Full design writeup: [Lesson 8](../lessons/lesson-8-membership-saga.md).
 
 ## Functional gaps
 
-- **No timeout sweep.** If Core never replies to a `purchase_initiated` event at
-  all (crash, a lost message, an extended Core outage), the purchase sits at
-  `CHARGED` forever — buyer charged, no grant, no refund, nothing automatic
-  resolves it. `CollectionMembershipRepository.findByRevokedAtIsNullAndExpiresAtBefore`
-  is already scaffolded for a "stuck-saga sweep" (labeled phase 3) but no scheduled
-  job calls it yet.
+The first five came out of a deliberate crash-safety pass over the saga: every
+point where marketplace, core, a poller, or the link to Stripe/RabbitMQ could
+fail. Everything else in that pass is covered by a mechanism (one-transaction
+claim+state+outbox, Stripe idempotency keys, durable queues, status guards) or is
+an accepted eventual-consistency window. These have no backstop.
+
+- **No timeout sweep for a stalled saga.** If core never replies to a
+  `marketplace.membership.charged` event (crash, a lost message, an extended core
+  outage), the purchase sits at `CHARGED` forever — buyer charged, no grant, no
+  refund, nothing automatic resolves it. *Fix:* a scheduled job that finds
+  `CHARGED` purchases past a deadline and refunds them (or re-drives the event).
+- **Missed webhook after a long marketplace outage.** Stripe retries
+  `payment_intent.succeeded` for ~3 days; past that it gives up. If marketplace is
+  down longer, the buyer is charged and stuck at `PENDING_PAYMENT` with no saga.
+  *Fix:* on startup / on a schedule, list recent Stripe PaymentIntents and
+  reconcile any our records missed.
+- **Declined-then-retry charge gets dropped.** A card declined at
+  `confirmPayment` fires `payment_intent.payment_failed`, which sets the purchase
+  row to `PAYMENT_FAILED`. If the buyer then pays successfully on the *same*
+  PaymentIntent (same modal, another card), `markChargedAndStartSaga`'s
+  `status !== "PENDING_PAYMENT"` guard drops it — buyer charged, no membership,
+  "failed" message. Workaround today: close and reopen the modal (fresh
+  PaymentIntent). *Fix:* let a `PAYMENT_FAILED` row still start the saga on a
+  later `payment_intent.succeeded`, or mint a fresh PaymentIntent per attempt.
+- **Connected-account status can go stale.** `chargesEnabled` / `payoutsEnabled`
+  on the `connected_accounts` doc are only refreshed as a side effect of
+  `getStatus()` (Profile payments card / New-collection form mount). No
+  `account.updated` webhook, no scheduled sync. The frontend gate is unaffected
+  (it uses the value `getStatus()` returns live), but the saga's settle step
+  reads the cached flag via `requireConnectedAccount()`: if Stripe enabled
+  payouts after the creator last loaded Profile, a sale is refunded with
+  `no_connected_account` when it needn't be. (The reverse is caught safely by
+  `transfers.create` failing for real.) *Fix:* an `account.updated` webhook
+  writing straight to the doc. Low priority at current scale — matters before a
+  real-creator launch.
+- **Orphan Stripe account on a crash during connect.** `findOrCreateAccount`
+  calls `stripe.accounts.create` and *then* inserts the `connected_accounts` row.
+  A crash in between leaves an empty Stripe account with nothing pointing at it;
+  the next connect attempt makes a second one. Harmless (an orphan account holds
+  no money and blocks nothing), just untidy and repeatable. *Fix:* insert a
+  placeholder row before the Stripe call, or sweep unlinked accounts. Lowest
+  priority.
 - **Profile page can't list another user's public collections.** `GET
   /api/v1/collections?scope=PUBLIC` has no `ownerId` filter, so a profile page
   can't show "this user's public collections." Pre-existing, unrelated to Stripe.
