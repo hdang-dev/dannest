@@ -1,28 +1,26 @@
 # Marketplace / membership saga — open issues
 
-Snapshot as of the initial build of the membership-purchase saga (Stripe Connect +
-real Stripe Elements checkout). Everything below is a known gap, not a surprise —
-review and prioritize before relying on this in production traffic.
+Known gaps in the membership-purchase saga (Stripe Connect + real Stripe Elements
+checkout). Everything below is a deliberate cut or a follow-up, not a surprise.
+Full design writeup: [Lesson 8](../lessons/lesson-8-membership-saga.md).
 
-## Deploy readiness
+## Deployed — for context
 
-- **Nothing has been pushed or deployed yet.** All of this shipped as local commits
-  only; `origin/main` doesn't have any of it.
-- `deploy-marketplace` in `.github/workflows/deploy.yml` is stubbed `if: false` —
-  marketplace has never been wired into the deploy pipeline. Needs a real Render
-  service id dropped in once one exists (see `services/marketplace/infra/` for the
-  Terraform scaffold — written but never applied).
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` needs to be added as a GitHub Actions repo
-  variable (Settings → Actions → Variables) — the web build-args already reference
-  it, nothing sets it yet.
-- No production Stripe webhook endpoint exists. Locally this uses `stripe listen`
-  to forward events to `localhost:8092`; production needs a real webhook endpoint
-  registered in the Stripe Dashboard (pointing at the deployed marketplace URL),
-  with its own signing secret set as `STRIPE_WEBHOOK_SECRET`.
-- Everything has been tested against Stripe **test mode** keys only. Going live
-  means switching to live-mode keys, which requires the Stripe account's own
-  identity/business verification to be complete first (not started — see the
-  earlier "Activate your account" flow that was intentionally not filled in).
+- The marketplace service **is live in production** (Render `dannest-marketplace`,
+  MongoDB Atlas, the shared CloudAMQP instance) and wired into
+  `.github/workflows/deploy.yml` (`check-marketplace` + `deploy-marketplace`,
+  Docker-runtime build on Render).
+- A production Stripe webhook endpoint exists (Dashboard → Developers → Webhooks,
+  pointing at `…/api/v1/marketplace/stripe/webhook`), its signing secret set as
+  `STRIPE_WEBHOOK_SECRET`.
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is set as a GitHub Actions repo **variable**
+  (not a secret — it's publishable) so the web build picks it up.
+
+## Still test-mode only
+
+- Everything runs against Stripe **test-mode** keys. Going live needs the Stripe
+  account's identity/business verification completed first (not started). No code
+  change — just live keys + the live webhook secret.
 
 ## Functional gaps
 

@@ -12,12 +12,14 @@ only — which libraries do the work.
 
 | Service | Role |
 |---|---|
-| **web** | Next.js frontend. The only thing users directly load in a browser. Talks to both backend APIs directly. |
-| **services/core** | Main backend API — auth, users, collections, posts, comments, follows, and media (image upload/crop/delete, the only service that talks to Cloudflare R2). Owns its own Postgres DB. Publishes events when something happens. |
+| **web** | Next.js frontend. The only thing users directly load in a browser. Talks to all three backend APIs directly. |
+| **services/core** | Main backend API — auth, users, collections, posts, comments, follows, media (image upload/crop/delete, the only service that talks to Cloudflare R2), and its half of the membership saga (validate a purchase, grant/revoke access). Owns its own Postgres DB. Publishes events when something happens; also *consumes* the marketplace's saga replies. |
 | **services/notification** | Small backend API dedicated to notifications only. Owns a *separate* Postgres DB. Consumes events from Core and pushes them live over WebSocket. |
+| **services/marketplace** | Node + TypeScript (Express 5) backend for paid memberships — Stripe Connect onboarding, the Stripe Elements checkout, and the *money* half of the membership saga (charge, transfer the creator's cut, refund on failure). Owns its own **MongoDB** database. Talks to Core only over RabbitMQ. |
 
-> Media was briefly a third service (`services/media`, Express + MongoDB); it was
+> Media was briefly a fourth service (`services/media`, Express + MongoDB); it was
 > folded back into Core — see [Lesson 7](../lessons/lesson-7-remerging-media.md).
+> The membership saga is written up in [Lesson 8](../lessons/lesson-8-membership-saga.md).
 
 ### Third-party / managed
 
@@ -25,10 +27,12 @@ only — which libraries do the work.
 |---|---|
 | **Google Sign-In** | Identity provider. User logs in with Google in the browser; the frontend sends the resulting ID token to Core, which verifies it with Google once, then never talks to Google again for that session. |
 | **Neon** | Managed Postgres. Hosts two separate databases — one for Core, one for Notification. |
-| **CloudAMQP** | Managed RabbitMQ. The message broker Core publishes events to and Notification consumes from. |
+| **MongoDB Atlas** | Managed MongoDB. The marketplace service's database — purchases, connected-account cache, and its outbox/inbox collections. No other service touches it. |
+| **Stripe** | Payments. Used only by the marketplace: Connect (Express accounts for creator payouts), PaymentIntents + Elements (the buyer's card), Transfers (the creator's cut), Refunds (saga compensation), and webhooks (payment-succeeded → the saga's first step). Test mode only so far. |
+| **CloudAMQP** | Managed RabbitMQ. The message broker all three backends use — Core and marketplace publish and consume the membership saga's events on it; Notification only consumes. |
 | **Upstash** | Managed Redis. Used only by Core: refresh tokens (revocable sessions), the public feed's page cache, and the trending-posts sorted set. Notification does **not** use Redis — see [Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md) §4 for why a Redis-backed fix there was built and then deliberately reverted. |
 | **Cloudflare R2** | S3-compatible object storage. Used only by Core, to store uploaded media (images) — accessed via the AWS S3 SDK pointed at R2's endpoint. |
-| **Render** | PaaS hosting for all three of our services (web, core, notification). Runs health checks, serves the live URLs. |
+| **Render** | PaaS hosting for all four of our services (web, core, notification, marketplace). Runs health checks, serves the live URLs. |
 | **GitHub Actions** | CI/CD. On every push, checks whichever service(s) changed, builds a Docker image, pushes it to GHCR, then tells Render to deploy that exact image. |
 | **GHCR** | GitHub Container Registry. Holds the Docker images GitHub Actions builds, tagged by commit SHA — Render only ever pulls from here, it never builds from source. |
 | **Terraform** | Infrastructure-as-code tool (not a runtime service) that defines the Render resources above declaratively, in [infra/main.tf](../../infra/main.tf). |
@@ -38,56 +42,59 @@ only — which libraries do the work.
 ```mermaid
 flowchart TD
     Google["Google Sign-In"]
+    Stripe["Stripe\n(Connect, PaymentIntents,\nTransfers, Refunds)"]
     Web["web\n(Next.js)"]
     Core["core\n(Spring Boot)"]
-    MQ["CloudAMQP\n(RabbitMQ)"]
+    MQ["CloudAMQP\n(RabbitMQ)\ndannest.events"]
     Notif["notification\n(Spring Boot)"]
+    Mkt["marketplace\n(Node + TS)"]
     NeonCore[("Neon Postgres #1\ncore DB")]
-    Redis[("Upstash Redis\nrefresh tokens")]
+    Redis[("Upstash Redis\nrefresh tokens, caches")]
     R2[("Cloudflare R2\nmedia bytes")]
     NeonNotif[("Neon Postgres #2\nnotification DB")]
-    Render["Render"]
-    GHA["GitHub Actions"]
-    GHCR[("GHCR\n(Docker images)")]
-    TF["Terraform"]
+    Mongo[("MongoDB Atlas\nmarketplace DB")]
 
     Google -- "ID token (login only)" --> Web
     Web -- "REST (JWT)" --> Core
     Web -- "REST (JWT) + WebSocket" --> Notif
-    Core -- "publish event\ndannest.events" --> MQ
+    Web -- "REST (JWT)" --> Mkt
+    Web -- "confirm card payment" --> Stripe
+    Core -- "publish + consume\n(saga replies)" --> MQ
+    Mkt -- "publish + consume\n(saga)" --> MQ
     MQ -- "consume event" --> Notif
     Notif -. "WebSocket push (live)" .-> Web
+    Mkt -- "Connect / charge / transfer / refund" --> Stripe
+    Stripe -. "webhook (payment succeeded)" .-> Mkt
     Core --> NeonCore
     Core --> Redis
     Core -- "S3 API" --> R2
     Notif --> NeonNotif
-    GHA -- "build + push image" --> GHCR
-    GHA -- "deploy exact image" --> Render
-    Render -- "pulls image" --> GHCR
-    TF -- "provisioned" --> Render
-    Render -. hosts .-> Web
-    Render -. hosts .-> Core
-    Render -. hosts .-> Notif
+    Mkt --> Mongo
 ```
+
+*(CI/CD — GitHub Actions building images to GHCR and deploying them to Render,
+Terraform provisioning the Render services — is unchanged by the marketplace
+addition; see [Lesson 2](../lessons/lesson-2-cicd.md) and the Deployment section
+of the [README](../../README.md).)*
 
 *(Rendered by any Mermaid-aware Markdown viewer — VS Code's built-in preview
 and GitHub both support it. If yours shows raw text instead of a diagram,
 tell me and I'll switch formats.)*
 
-`core` and `notification` never call each other directly and never share a
-database — the RabbitMQ event above is the only link between them. `web` is the
-only thing that talks to both backend services directly.
+No two backends call each other directly or share a database — the RabbitMQ
+events on `dannest.events` are the only link. `web` is the only thing that talks
+to all three backend services directly.
 
 Plain-English version:
 
 1. User logs into **web** via **Google Sign-In**.
 2. **web** sends that Google token to **core**, which verifies it with Google once and issues DanNest's own JWT.
-3. **web** uses that JWT for every REST call to **core** and **notification**.
+3. **web** uses that JWT for every REST call to **core**, **notification**, and **marketplace** (they all verify the same HS256 signature).
 4. **core** stores its data in its own **Neon** Postgres, refresh tokens + caches in **Upstash** Redis, and uploaded image bytes in **Cloudflare R2** (via the S3 API).
 5. Whenever something notification-worthy happens, **core** publishes an event to **CloudAMQP** (RabbitMQ). It doesn't know or care who's listening.
 6. **notification** consumes that event, saves it to its own **Neon** Postgres, and pushes it live to **web** over a WebSocket.
-7. **core** and **notification** never call each other directly and never share a database.
-8. All three of our services are hosted on **Render**; **GitHub Actions** builds and pushes a Docker image to **GHCR** on every push, then tells Render to deploy that exact image; **Terraform** is what originally provisioned the services on Render.
+7. When a user buys a membership, **web** calls **marketplace** to start a purchase and confirms the card directly with **Stripe**. **marketplace** stores purchases in its own **MongoDB Atlas** database, and it and **core** run the rest as a saga — each publishing events the other consumes on `dannest.events`, never a direct call. See flow (k) below and [Lesson 8](../lessons/lesson-8-membership-saga.md).
+8. All four of our services are hosted on **Render**; **GitHub Actions** builds and pushes a Docker image to **GHCR** on every push, then tells Render to deploy that exact image; **Terraform** is what originally provisioned the services on Render.
 
 ---
 
@@ -102,6 +109,8 @@ Plain-English version:
 | `typescript` | Static typing across the app. |
 | `@stomp/stompjs` | STOMP protocol client, for the live notification WebSocket. |
 | `sockjs-client` | WebSocket transport (with fallback) that STOMP rides on. |
+| `@stripe/stripe-js` | Loads Stripe's runtime script; the publishable-key client used by the checkout modal. |
+| `@stripe/react-stripe-js` | React bindings — `<Elements>`, `<PaymentElement>`, `useStripe`/`useElements`, `confirmPayment`. Card data stays in Stripe's iframe. |
 | `react-easy-crop` | Image cropping UI before uploading media. |
 | `tailwindcss` | Utility-class CSS styling. |
 | `eslint` | Linting (dev-time only, no runtime role). |
@@ -133,6 +142,19 @@ reasons, minus Redis/AWS/Google (not needed here), plus one addition:
 | Library | What it's for |
 |---|---|
 | `spring-boot-starter-websocket` | STOMP-over-WebSocket support — pushes live notifications to connected browsers. |
+
+### services/marketplace (Node + TypeScript)
+
+| Library | What it's for |
+|---|---|
+| `express` (5.x) | HTTP framework — routes, middleware. v5 so a rejected promise from an async handler forwards to the error middleware automatically. |
+| `typescript` | Static typing; compiled with `tsc`, run with `tsx` in dev. |
+| `mongoose` | MongoDB ODM — schemas, the connection, and `ClientSession` transactions for the outbox/inbox writes. |
+| `stripe` | Official Stripe SDK — Connect accounts + account links, PaymentIntents, Transfers, Refunds, and `webhooks.constructEvent` (raw-body signature verification). |
+| `amqplib` | Low-level RabbitMQ client — publishes the outbox rows and runs the reply listener (no Spring AMQP equivalent here, so queue/DLQ declaration is by hand). |
+| `jsonwebtoken` | Verifies the same HS256 JWT Core issues — no login of its own. |
+| `cors` | CORS for the browser calls from `web`. |
+| `dotenv` | Loads `.env` in local dev (`config/env.ts` is the single read point). |
 
 ---
 
@@ -344,3 +366,161 @@ sequenceDiagram
 
 No time decay yet — scores only ever accumulate, a known limitation (see
 [Lesson 6](../lessons/lesson-6-feed-cache-and-trending.md) §3).
+
+### i) A creator connects Stripe (one-time, before selling)
+
+All in `marketplace` — Core never sees any of this, it only ever hears a
+`userId` back later.
+
+```mermaid
+sequenceDiagram
+    participant W as web (ConnectSettingsCard, on /profile)
+    participant M as marketplace
+    participant S as Stripe
+    participant DB as MongoDB
+
+    W->>M: POST /api/v1/marketplace/connect/onboard
+    M->>DB: find or create ConnectedAccount (Express account in Stripe)
+    M->>S: accountLinks.create (onboarding, short-lived URL)
+    M-->>W: 200 { url }
+    W->>S: redirect the browser to the Stripe-hosted form
+    S-->>W: redirect back to /profile?connected=1
+    W->>M: GET /api/v1/marketplace/connect/status
+    M->>S: accounts.retrieve (live charges/payouts flags)
+    M->>DB: refresh the cached flags
+    M-->>W: 200 { connected, chargesEnabled, payoutsEnabled }
+```
+
+The `ConnectedAccount` row's `chargesEnabled` / `payoutsEnabled` are a **cache**
+of Stripe's status, re-read every time status is checked — never the source of
+truth. `web` only unlocks the "members-only" option in the collection form once
+`payoutsEnabled` is `true`.
+
+### j) Create a members-only collection
+
+```mermaid
+sequenceDiagram
+    participant W as web (CollectionFormModal)
+    participant M as marketplace
+    participant C as core
+    participant DB as Neon (core DB)
+
+    W->>M: GET /api/v1/marketplace/connect/status
+    M-->>W: { payoutsEnabled: true }
+    Note over W: only now is the "Members-only" pill enabled
+    W->>C: POST /api/v1/collections { visibility: MEMBERS_ONLY, priceCents }
+    C->>DB: save Collection (chk_collections_members_only_price enforces priceCents > 0)
+    C-->>W: 201 CollectionResponse
+```
+
+Core stores only the **price** and, later, **who was granted access** — never
+anything about Stripe or money. `visibility` and `priceCents` are immutable once
+set (enforced in `CollectionService.update`, not as a DB constraint — it's a
+transition rule).
+
+### k) Buy a membership — the saga
+
+The one genuinely distributed transaction in the system: `web` + `marketplace` +
+Stripe + `core`, no orchestrator, no 2PC. Full narrative, including every failure
+mode and the bugs hit along the way, is
+[Lesson 8](../lessons/lesson-8-membership-saga.md) — this is the reference version.
+
+**Phase 1 — checkout (synchronous, no saga yet).**
+
+```mermaid
+sequenceDiagram
+    participant W as web (MembershipCheckoutModal)
+    participant M as marketplace
+    participant S as Stripe
+    participant DB as MongoDB
+
+    W->>M: POST /api/v1/marketplace/memberships { collectionId, priceCents }
+    M->>S: paymentIntents.create (amount, unconfirmed)
+    M->>DB: save MembershipPurchase (PENDING_PAYMENT)
+    M-->>W: 200 { purchaseId, clientSecret }
+    W->>S: stripe.confirmPayment({ elements })  (card data never touches our servers)
+    S-->>W: payment succeeded (client-side)
+    W->>M: poll GET /api/v1/marketplace/memberships/{purchaseId} until status changes
+```
+
+**Phase 2 — the saga (asynchronous, event-driven).** Starts only when Stripe's
+*webhook* confirms the charge — not the browser's word for it.
+
+```mermaid
+sequenceDiagram
+    participant S as Stripe
+    participant M as marketplace
+    participant MQ as RabbitMQ (dannest.events)
+    participant C as core
+    participant MDB as MongoDB
+    participant CDB as Neon (core DB)
+
+    S-->>M: webhook payment_intent.succeeded
+    M->>MDB: claim inbox event + set purchase CHARGED + write outbox row  (one tx)
+    Note over M: outbox poller (1s) publishes the row, then stamps published_at
+    M->>MQ: marketplace.membership.charged
+    MQ->>C: deliver → core.membership-saga.q
+    C->>CDB: validate (members-only? price match? not owner? not already a member?)
+    alt valid
+        C->>CDB: save CollectionMembership (30 days) + write outbox row  (one tx)
+        C->>MQ: core.membership.granted
+        MQ->>M: deliver → marketplace.membership-saga.q
+        M->>S: transfers.create (creator's cut → their Connect account, idempotency-keyed)
+        M->>MDB: claim inbox + set purchase CONFIRMED + save transferId  (one tx)
+    else invalid  (compensation #1)
+        C->>MQ: core.membership.rejected { reason }
+        MQ->>M: deliver → marketplace.membership-saga.q
+        M->>S: refunds.create (idempotency-keyed)
+        M->>MDB: claim inbox + set purchase REFUNDED + reason  (one tx)
+    end
+```
+
+**Compensation #2 — Core granted, but the transfer fails** (creator never
+finished Connect onboarding, or any other Stripe-side failure):
+
+```mermaid
+sequenceDiagram
+    participant M as marketplace
+    participant S as Stripe
+    participant MQ as RabbitMQ
+    participant C as core
+    participant MDB as MongoDB
+    participant CDB as Neon (core DB)
+
+    Note over M: transfers.create threw
+    M->>S: refunds.create (idempotency-keyed)
+    M->>MDB: claim inbox + set REFUNDED + reason ("no_connected_account" | "settle_failed")  (one tx)
+    M->>MQ: marketplace.membership.payout-failed
+    MQ->>C: deliver → core.membership-payout-failed.q
+    C->>CDB: revoke the CollectionMembership it granted (idempotent)
+```
+
+Key properties (all in [Lesson 8](../lessons/lesson-8-membership-saga.md)):
+
+- **Transactional outbox** on both sides — the business row and the "I will
+  publish this event" row commit in one DB transaction; a 1-second poller does
+  the actual publish. An event is never lost because RabbitMQ was briefly
+  unreachable.
+- **Idempotent inbox** — `(event_id, consumer)` is unique; a handler claims the
+  event *in the same transaction* as its effect. RabbitMQ's at-least-once
+  redelivery can't produce a double grant or a double refund.
+- **Do the fallible thing first.** Every marketplace handler makes its Stripe
+  call *before* claiming the inbox event and committing local state. Claiming up
+  front would mark the event done forever the moment any attempt hit a transient
+  error — money moved or owed, with no record and no retry.
+- **Stripe idempotency keys** on every outgoing transfer/refund — a genuine
+  retry (two deliveries racing, a hand replay from a DLQ) reuses the original,
+  never moves money twice.
+- **Dead-letter queues** — every saga queue rejects-without-requeue on any
+  handler exception (not just malformed JSON) and dead-letters it, instead of
+  Spring AMQP's default infinite redelivery.
+
+**Routing keys** (`<publisher>.<aggregate>.<past-tense-verb>`) and **queues**
+(`<consumer>.<intent>.q` / `.dlq`):
+
+| Routing key | Published by | Consumed on |
+|---|---|---|
+| `marketplace.membership.charged` | marketplace | `core.membership-saga.q` |
+| `core.membership.granted` | core | `marketplace.membership-saga.q` |
+| `core.membership.rejected` | core | `marketplace.membership-saga.q` |
+| `marketplace.membership.payout-failed` | marketplace | `core.membership-payout-failed.q` |

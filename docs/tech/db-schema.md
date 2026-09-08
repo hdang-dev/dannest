@@ -1,11 +1,15 @@
 # DanNest — Database Schema
 
-DanNest is split into two backend services, each owning its **own** database —
-see [Lesson 4](../lessons/lesson-4-microservices.md). This doc covers **Core's**
-Postgres database (social + collections + media); the notification service's much
-smaller Postgres schema is at the bottom.
+DanNest is split into three backend services, each owning its **own** database —
+see [Lesson 4](../lessons/lesson-4-microservices.md). This doc covers, in order:
 
-> Media used to be a third service (`services/media`, MongoDB) — it was folded
+- **Core's** Postgres (social + collections + media + membership grants) — most of this doc
+- **Notification's** Postgres — one small table, near the bottom
+- **Marketplace's** MongoDB (purchases + Stripe-account cache + outbox/inbox) — [Lesson 8](../lessons/lesson-8-membership-saga.md)
+
+No two services share a schema, and no database has a foreign key into another's.
+
+> Media used to be a fourth service (`services/media`, MongoDB) — it was folded
 > back into Core in [Lesson 7](../lessons/lesson-7-remerging-media.md). Core owns
 > the `media` table again (migration
 > [`V9__media_back_into_core.sql`](../../services/core/src/main/resources/db/migration/V9__media_back_into_core.sql)).
@@ -39,6 +43,8 @@ erDiagram
     POSTS ||--o{ POST_LIKES : receives
     USERS ||--o{ COLLECTION_FOLLOWS : follows
     COLLECTIONS ||--o{ COLLECTION_FOLLOWS : "followed by"
+    USERS ||--o{ COLLECTION_MEMBERSHIP : "has membership in"
+    COLLECTIONS ||--o{ COLLECTION_MEMBERSHIP : "sold access to"
 
     MEDIA {
         uuid id PK
@@ -84,7 +90,8 @@ erDiagram
         real cover_crop_y "0..1, default 0"
         real cover_crop_width "0..1, default 1"
         real cover_crop_height "0..1, default 1"
-        string visibility "PUBLIC | PRIVATE"
+        string visibility "PUBLIC | PRIVATE | MEMBERS_ONLY"
+        int price_cents "required iff MEMBERS_ONLY, else null; > 0"
         timestamptz archived_at "nullable (soft-delete)"
         timestamptz created_at
         timestamptz updated_at
@@ -134,6 +141,17 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+    COLLECTION_MEMBERSHIP {
+        uuid id PK
+        uuid user_id FK
+        uuid collection_id FK
+        string purchase_id "varchar(64), marketplace's purchase id — logical ref, no FK, unique"
+        timestamptz granted_at
+        timestamptz expires_at "granted_at + 30 days"
+        timestamptz revoked_at "nullable — set on compensation #2"
+        timestamptz created_at
+        timestamptz updated_at
+    }
 ```
 
 **The `media` table's history** — it lived here through V6, was dropped by
@@ -157,6 +175,9 @@ see *Image crop* and *Notes* below.
 | `comments` | replies on a post | `parent_comment_id` (nullable) → nested threads |
 | `post_likes` | a user's like | own `id`, unique `(post_id, user_id)` |
 | `collection_follows` | a user following a collection (to be notified of new posts) | `follower_id` → `users`; `collection_id` → `collections`; unique `(follower_id, collection_id)` |
+| `collection_membership` | a granted paid membership (the saga's result on Core's side) | `user_id` / `collection_id` → those tables; `purchase_id` `varchar(64)` unique (marketplace's id, no FK); partial-unique `(user_id, collection_id) where revoked_at is null` — at most one *active* membership, re-purchase after expiry is fine |
+| `outbox_event` | transactional outbox — one row per domain event Core will publish, written in the business transaction | `published_at` null until a 1s poller sends it; `payload` is pre-serialized `text`; see [Lesson 8](../lessons/lesson-8-membership-saga.md) |
+| `inbox_event` | idempotent consumer — "have I processed this event already" | PK `(event_id, consumer)`; a listener inserts here in the *same* transaction as its effect, `ON CONFLICT DO NOTHING` |
 
 ## Image crop (framing)
 
@@ -240,3 +261,78 @@ time. That started as a cross-service necessity (V7) and was kept because it als
 keeps feed/profile reads join-free and a soft-deleted asset from breaking an
 existing attachment. See the *Image crop* and *Notes* sections above, and the full
 read/write flow in [architecture-flows.md](architecture-flows.md).
+
+## Membership & the saga (in Core)
+
+Migrations [`V10`](../../services/core/src/main/resources/db/migration/V10__members_only_collections.sql)
+(members-only collections + `collection_membership`),
+[`V11`](../../services/core/src/main/resources/db/migration/V11__outbox_inbox.sql)
+(`outbox_event` + `inbox_event`), and
+[`V12`](../../services/core/src/main/resources/db/migration/V12__purchase_id_as_text.sql)
+(widen `purchase_id` to `varchar(64)` — it holds a Mongo ObjectId, same class of
+fix as V8 did for `media_id`).
+
+- **`collections.price_cents`** — nullable, with a CHECK constraint: null unless
+  `visibility = 'MEMBERS_ONLY'`, `> 0` when it is. The app additionally makes both
+  fields immutable once set (a transition rule, not a static constraint).
+- **`collection_membership`** — Core's record of a granted purchase. It stores
+  *only* who has access, from when, until when, and the marketplace `purchase_id`
+  to correlate. Nothing about Stripe, the amount paid, or the buyer's card —
+  Core never sees any of that. `revoke()` (sets `revoked_at`) is idempotent, so
+  redelivery of the payout-failed event is safe.
+- **`outbox_event` / `inbox_event`** — the transactional-outbox and
+  idempotent-consumer tables. `outbox_event` rows are written in the same
+  transaction as the `collection_membership` change; `OutboxPoller` publishes
+  unsent rows every second and stamps `published_at`. `inbox_event` is claimed by
+  a saga listener *inside* the transaction that applies the event's effect, so an
+  at-least-once redelivery can't double-apply. Marketplace has the exact same two
+  structures in MongoDB (below). Full mechanism: [Lesson 8](../lessons/lesson-8-membership-saga.md).
+
+## Marketplace service's database (MongoDB)
+
+Owned by `services/marketplace` — a MongoDB database (Atlas in production, a
+local `mongod` or Atlas cluster in dev). Mongoose schemas under
+[`services/marketplace/src/`](../../services/marketplace/src/); no migration
+files — indexes are declared on the schema and created on connect. **No
+references to any other database.**
+
+### `membershippurchases`
+
+The saga's state on the money side. One document per checkout attempt.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `_id` | ObjectId | this is the `purchaseId` / `purchase_id` everywhere else |
+| `buyerId`, `collectionId` | string | Core `users.id` / `collections.id` — logical only |
+| `priceCents` | number | what Stripe was told to charge |
+| `stripePaymentIntentId` | string | the PaymentIntent created at checkout |
+| `stripeTransferId` | string \| null | set once the creator's cut is transferred |
+| `status` | string | `PENDING_PAYMENT` → `PAYMENT_FAILED` \| `CHARGED` → `CONFIRMED` \| `REFUNDED` |
+| `reason` | string \| null | Core's rejection reason, `"no_connected_account"`, `"settle_failed"`, or Stripe's decline message |
+| `createdAt`, `updatedAt` | Date | Mongoose timestamps |
+
+### `connectedaccounts`
+
+A creator's Stripe Express account. One per user, created lazily on first
+onboarding.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `userId` | string | unique — Core `users.id` |
+| `stripeAccountId` | string | the Stripe `acct_…` id |
+| `chargesEnabled`, `payoutsEnabled` | boolean | a **cache** of Stripe's account status, re-read live on every status check — never the source of truth |
+| `createdAt`, `updatedAt` | Date | |
+
+### `outboxevents` / `inboxevents`
+
+Mongo mirrors of Core's `outbox_event` / `inbox_event` — same mechanism, adapted
+to a document store (payload is a native object, not pre-serialized text).
+
+- **`outboxevents`** — `aggregateType`, `aggregateId`, `eventType` (also the
+  RabbitMQ routing key), `payload` (object), `publishedAt` (null until sent),
+  `attempts`, `lastError`. Partial index on `{ createdAt: 1 }` where
+  `publishedAt: null` — the poller's only query. Written inside a
+  `session.withTransaction` alongside the purchase change.
+- **`inboxevents`** — `{ eventId, consumer }` unique. Claimed with an insert
+  (catch duplicate-key → already processed) inside the same transaction as the
+  effect.
