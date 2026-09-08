@@ -8,9 +8,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Consumes Core's {@code core.activity.*} events off the {@code notification.activity.q}
- * queue (see RabbitConfig). Rejects without requeue on any failure — see {@link
- * EventConsumer}'s javadoc for why.
+ * Consumes Core's {@code ACTIVITY_*} domain events off the {@code activity.events} queue
+ * (see RabbitConfig). Rejects without requeue on any failure — see {@link EventConsumer}'s
+ * javadoc for why.
  */
 @Slf4j
 @Component
@@ -19,7 +19,7 @@ public class ActivityEventConsumer {
 
     private final ActivityService activityService;
 
-    @RabbitListener(queues = "notification.activity.q")
+    @RabbitListener(queues = "activity.events")
     public void onEvent(DannestEvent event) {
         try {
             activityService.recordFromEvent(event);
