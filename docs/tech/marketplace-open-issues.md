@@ -70,6 +70,19 @@ an accepted eventual-consistency window. These have no backstop.
   /api/v1/collections?scope=PUBLIC` has no `ownerId` filter, so a profile page
   can't show "this user's public collections." Pre-existing, unrelated to Stripe.
 
+## Design shortcuts to revisit
+
+- **The frontend polls for the saga result.** After checkout,
+  `waitForMembershipPurchase` polls `GET /api/v1/marketplace/memberships/:id`
+  every 1s until the status settles; after a refund, `reloadUntilRevoked` polls
+  `GET /api/v1/collections/:id` until `viewerHasMembership` flips. It works, but
+  it's the buyer's browser hammering an endpoint, and it doesn't scale. The
+  project already has the right mechanism — the notification service's
+  WebSocket/STOMP push (`/topic/notifications/{userId}`). The saga's terminal
+  state should be pushed the same way: marketplace emits a domain event →
+  notification (or a small marketplace SSE endpoint) pushes it to the buyer.
+  Polling stays as the fallback, same as the notification feed already does.
+
 ## Minor / cosmetic
 
 - `MembershipCheckoutModal` creates two `PaymentIntent`s on open in local dev —
