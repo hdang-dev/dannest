@@ -7,8 +7,8 @@
 // creator's cut) or refund. Two compensation paths once the saga is running: Core
 // rejects (refund), or Core grants but the settle step itself fails, e.g. the
 // creator never finished Connect onboarding (refund, and tell Core via
-// mkt.membership.settle_failed so it can revoke the grant it already made — see
-// MembershipRevokedListener on Core's side).
+// marketplace.membership.payout-failed so it can revoke the grant it already made —
+// see MembershipRevokedListener on Core's side).
 //
 // Every handler below follows the same shape: do the fallible external work (a
 // Stripe call) FIRST, and only claim the inbox event + commit local state once that
@@ -139,7 +139,7 @@ interface RejectedPayload {
 export async function handleActivated(payload: ActivatedPayload): Promise<void> {
   const purchase = await MembershipPurchase.findById(payload.purchaseId);
   if (!purchase) {
-    console.error(`core.membership.activated for unknown purchase ${payload.purchaseId}`);
+    console.error(`core.membership.granted for unknown purchase ${payload.purchaseId}`);
     return;
   }
   if (purchase.status !== "CHARGED") {
@@ -179,7 +179,7 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
       purchase.status = "REFUNDED";
       purchase.reason = reason;
       await purchase.save({ session });
-      await writeOutboxEvent(session, "MEMBERSHIP_PURCHASE", purchase.id, "mkt.membership.settle_failed", {
+      await writeOutboxEvent(session, "MEMBERSHIP_PURCHASE", purchase.id, "marketplace.membership.payout-failed", {
         eventId: randomUUID(),
         purchaseId: purchase.id,
       });

@@ -66,7 +66,7 @@ public class NotificationService {
                 .actorId(event.actorId())
                 .actorUsername(event.actorUsername())
                 .actorAvatarUrl(event.actorAvatarUrl())
-                .type(NotificationType.valueOf(event.eventType()))
+                .type(NotificationType.fromRoutingKey(event.eventType()))
                 .collectionId(event.collectionId())
                 .collectionName(event.collectionName())
                 .postId(event.postId())

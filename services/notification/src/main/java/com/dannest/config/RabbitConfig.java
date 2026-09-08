@@ -1,5 +1,8 @@
 package com.dannest.config;
 
+import com.dannest.activity.ActivityType;
+import com.dannest.notification.NotificationType;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -18,33 +21,31 @@ import org.springframework.context.annotation.Configuration;
  * must match Core's declaration or RabbitMQ rejects it).
  *
  * <p>Two independent consumers share this one exchange, each bound to only the routing keys
- * it understands — the exact scenario a topic exchange is for. The notification queue binds
- * explicitly to the four {@code NotificationType} values (used to bind {@code #} back when
- * it was the only consumer) — explicit, not wildcard, because Core also publishes
- * {@code ACTIVITY_*}-prefixed events now, and {@code EventConsumer} would throw on one of
- * those ({@code NotificationType.valueOf("ACTIVITY_POST_CREATED")}) — which, left unguarded,
- * means Spring AMQP's default requeue-on-exception behavior turns into an infinite redelivery
- * loop. The activity queue binds the other way — only the {@code ACTIVITY_*} keys.
+ * it understands — the exact scenario a topic exchange is for. Bindings are derived from
+ * the {@link NotificationType} / {@link ActivityType} enums' {@code routingKey}s, so they
+ * can't drift from what those consumers actually handle. Explicit keys, never a wildcard:
+ * Core also publishes {@code core.activity.*} events, and {@code EventConsumer} would throw
+ * on one of those ({@code NotificationType.fromRoutingKey(...)}) — which, left unguarded,
+ * turns Spring AMQP's default requeue-on-exception into an infinite redelivery loop.
  *
- * <p>Both queues also carry a dead-letter queue now — the routing fix above only closes the
- * one failure mode it was written for (an unrecognized type reaching this listener). Any
- * other exception from {@code EventConsumer} (a bad row, a DB hiccup) is just as capable of
- * an infinite loop, which is what {@code EventConsumer}'s own reject-and-DLQ handling
- * (mirroring Core's {@code MembershipSagaListener}) now needs somewhere to actually land.
+ * <p>Both queues carry a dead-letter queue — the routing above only closes one failure
+ * mode (an unrecognized key reaching a listener). Any other exception from a consumer
+ * (a bad row, a DB hiccup) is just as capable of a loop, which is what the consumers'
+ * reject-and-DLQ handling now needs somewhere to land.
  */
 @Configuration
 public class RabbitConfig {
 
     private static final String EVENTS_EXCHANGE = "dannest.events";
-    private static final String NOTIFICATION_QUEUE = "notification.events";
-    private static final String NOTIFICATION_DLQ = "notification.events.dlq";
-    private static final String ACTIVITY_QUEUE = "activity.events";
-    private static final String ACTIVITY_DLQ = "activity.events.dlq";
+    private static final String NOTIFICATION_QUEUE = "notification.notifications.q";
+    private static final String NOTIFICATION_DLQ = "notification.notifications.dlq";
+    private static final String ACTIVITY_QUEUE = "notification.activity.q";
+    private static final String ACTIVITY_DLQ = "notification.activity.dlq";
 
     private static final List<String> NOTIFICATION_ROUTING_KEYS =
-            List.of("NEW_POST", "COMMENT_REPLY", "FOLLOW", "POST_LIKED");
-    private static final List<String> ACTIVITY_ROUTING_KEYS = List.of(
-            "ACTIVITY_POST_CREATED", "ACTIVITY_COMMENT_CREATED", "ACTIVITY_POST_LIKED", "ACTIVITY_COLLECTION_FOLLOWED");
+            Arrays.stream(NotificationType.values()).map(t -> t.routingKey).toList();
+    private static final List<String> ACTIVITY_ROUTING_KEYS =
+            Arrays.stream(ActivityType.values()).map(t -> t.routingKey).toList();
 
     @Bean
     TopicExchange eventsExchange() {

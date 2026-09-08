@@ -42,7 +42,7 @@ public class NotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
 
         eventPublisher.publish(new DannestEvent(
-                type.name(),
+                type.routingKey,
                 recipientId,
                 actorId,
                 actor.getUsername(),
@@ -67,7 +67,7 @@ public class NotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + collectionId));
 
         eventPublisher.publish(new DannestEvent(
-                "ACTIVITY_" + type.name(),
+                type.routingKey,
                 actorId,
                 actorId,
                 actor.getUsername(),

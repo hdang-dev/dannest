@@ -23,18 +23,20 @@ public class RabbitConfig {
 
     public static final String EVENTS_EXCHANGE = "dannest.events";
 
-    private static final String MARKETPLACE_QUEUE = "core.marketplace";
-    private static final String MARKETPLACE_DLQ = "core.marketplace.dlq";
-    private static final String MARKETPLACE_SETTLE_FAILED_QUEUE = "core.marketplace.settle-failed";
-    private static final String MARKETPLACE_SETTLE_FAILED_DLQ = "core.marketplace.settle-failed.dlq";
+    // Queue names: <consumer>.<intent>, ending in .q / .dlq so they never read like a
+    // routing key. Routing keys (below): <publisher>.<aggregate>.<past-tense-verb>.
+    private static final String SAGA_QUEUE = "core.membership-saga.q";
+    private static final String SAGA_DLQ = "core.membership-saga.dlq";
+    private static final String PAYOUT_FAILED_QUEUE = "core.membership-payout-failed.q";
+    private static final String PAYOUT_FAILED_DLQ = "core.membership-payout-failed.dlq";
 
     /** Only the one key each of Core's saga listeners understands — never a wildcard. An
      * unhandled routing key hitting a listener that can't parse it is how a previous
      * incident here turned into an infinite redelivery loop (see notification's
      * RabbitConfig javadoc). Two different keys means two different queues, not one queue
      * bound twice — see MembershipRevokedListener's javadoc for why. */
-    private static final String PURCHASE_INITIATED_KEY = "mkt.membership.purchase_initiated";
-    private static final String SETTLE_FAILED_KEY = "mkt.membership.settle_failed";
+    private static final String MEMBERSHIP_CHARGED_KEY = "marketplace.membership.charged";
+    private static final String PAYOUT_FAILED_KEY = "marketplace.membership.payout-failed";
 
     @Bean
     TopicExchange eventsExchange() {
@@ -42,44 +44,44 @@ public class RabbitConfig {
     }
 
     @Bean
-    Queue marketplaceDlq() {
-        return new Queue(MARKETPLACE_DLQ, true);
+    Queue sagaDlq() {
+        return new Queue(SAGA_DLQ, true);
     }
 
-    /** Failed/unparseable deliveries land in {@link #marketplaceDlq()} instead of being
+    /** Failed/unparseable deliveries land in {@link #sagaDlq()} instead of being
      * redelivered forever. */
     @Bean
-    Queue marketplaceQueue() {
-        return QueueBuilder.durable(MARKETPLACE_QUEUE)
+    Queue sagaQueue() {
+        return QueueBuilder.durable(SAGA_QUEUE)
                 .withArgument("x-dead-letter-exchange", "")
-                .withArgument("x-dead-letter-routing-key", MARKETPLACE_DLQ)
+                .withArgument("x-dead-letter-routing-key", SAGA_DLQ)
                 .build();
     }
 
     @Bean
-    Binding marketplaceBinding(Queue marketplaceQueue, TopicExchange eventsExchange) {
-        return BindingBuilder.bind(marketplaceQueue).to(eventsExchange).with(PURCHASE_INITIATED_KEY);
+    Binding sagaBinding(Queue sagaQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(sagaQueue).to(eventsExchange).with(MEMBERSHIP_CHARGED_KEY);
     }
 
     @Bean
-    Queue marketplaceSettleFailedDlq() {
-        return new Queue(MARKETPLACE_SETTLE_FAILED_DLQ, true);
+    Queue payoutFailedDlq() {
+        return new Queue(PAYOUT_FAILED_DLQ, true);
     }
 
     /** See {@link com.dannest.membership.MembershipRevokedListener}'s javadoc — its own
-     * queue/DLQ rather than another binding on {@link #marketplaceQueue()}, since that
+     * queue/DLQ rather than another binding on {@link #sagaQueue()}, since that
      * queue's listener parses every message strictly as {@code PurchaseInitiatedEvent}. */
     @Bean
-    Queue marketplaceSettleFailedQueue() {
-        return QueueBuilder.durable(MARKETPLACE_SETTLE_FAILED_QUEUE)
+    Queue payoutFailedQueue() {
+        return QueueBuilder.durable(PAYOUT_FAILED_QUEUE)
                 .withArgument("x-dead-letter-exchange", "")
-                .withArgument("x-dead-letter-routing-key", MARKETPLACE_SETTLE_FAILED_DLQ)
+                .withArgument("x-dead-letter-routing-key", PAYOUT_FAILED_DLQ)
                 .build();
     }
 
     @Bean
-    Binding marketplaceSettleFailedBinding(Queue marketplaceSettleFailedQueue, TopicExchange eventsExchange) {
-        return BindingBuilder.bind(marketplaceSettleFailedQueue).to(eventsExchange).with(SETTLE_FAILED_KEY);
+    Binding payoutFailedBinding(Queue payoutFailedQueue, TopicExchange eventsExchange) {
+        return BindingBuilder.bind(payoutFailedQueue).to(eventsExchange).with(PAYOUT_FAILED_KEY);
     }
 
     /**

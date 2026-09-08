@@ -25,7 +25,7 @@ export async function startSagaFromCharge(
       session,
       "MEMBERSHIP_PURCHASE",
       purchase.id,
-      "mkt.membership.purchase_initiated",
+      "marketplace.membership.charged",
       {
         eventId: randomUUID(),
         purchaseId: purchase.id,

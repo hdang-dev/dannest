@@ -8,11 +8,12 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Consumes Core's domain events off the {@code notification.events} queue (see RabbitConfig)
- * and turns each into a persisted notification plus a live WebSocket push.
+ * Consumes Core's {@code core.notification.*} events off the {@code notification.notifications.q}
+ * queue (see RabbitConfig) and turns each into a persisted notification plus a live
+ * WebSocket push.
  *
- * <p>Any exception from {@link #notificationService} — not just an unrecognized {@code
- * NotificationType} — is rejected without requeue instead of left to Spring's default
+ * <p>Any exception from {@link #notificationService} — not just an unrecognized routing
+ * key — is rejected without requeue instead of left to Spring's default
  * indefinite-requeue-and-retry: a deterministic failure here (bad data, a bug) would
  * otherwise redeliver and fail identically forever, the exact infinite loop this queue's
  * binding was narrowed to prevent in the first place (see RabbitConfig's javadoc) — just
@@ -25,7 +26,7 @@ public class EventConsumer {
 
     private final NotificationService notificationService;
 
-    @RabbitListener(queues = "notification.events")
+    @RabbitListener(queues = "notification.notifications.q")
     public void onEvent(DannestEvent event) {
         try {
             notificationService.recordFromEvent(event);

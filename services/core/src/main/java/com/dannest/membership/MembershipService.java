@@ -60,7 +60,7 @@ public class MembershipService {
         outboxWriter.write(
                 "MEMBERSHIP_PURCHASE",
                 event.purchaseId(),
-                "core.membership.activated",
+                "core.membership.granted",
                 new MembershipActivatedEvent(UUID.randomUUID(), event.purchaseId(), collection.getOwnerId()));
     }
 

@@ -39,7 +39,7 @@ public class MembershipSagaListener {
     private final Idempotency idempotency;
     private final MembershipService membershipService;
 
-    @RabbitListener(queues = "core.marketplace")
+    @RabbitListener(queues = "core.membership-saga.q")
     @Transactional
     public void onPurchaseInitiated(Message message) {
         PurchaseInitiatedEvent event;

@@ -3,7 +3,7 @@ package com.dannest.membership.event;
 import java.util.UUID;
 
 /**
- * Consumed from services/marketplace (routing key {@code mkt.membership.settle_failed}) —
+ * Consumed from services/marketplace (routing key {@code marketplace.membership.payout-failed}) —
  * Core already granted this purchase's membership, but marketplace couldn't pay the
  * creator their cut (e.g. they never finished Connect onboarding) and refunded the
  * buyer instead. Core's compensation: revoke the membership it already granted, so a

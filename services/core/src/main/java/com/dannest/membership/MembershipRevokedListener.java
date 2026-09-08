@@ -14,11 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Compensation #2's other half. {@link MembershipSagaListener} grants a membership on
- * {@code purchase_initiated}; if services/marketplace then fails to pay the creator (the
- * settle step), it refunds the buyer and publishes {@code mkt.membership.settle_failed}
- * so Core can undo that grant — otherwise a refunded buyer would keep a month of free
- * access. On its own queue/DLQ rather than sharing {@code core.marketplace} with the
- * purchase-initiated listener: that listener parses every message strictly as {@link
+ * {@code marketplace.membership.charged}; if services/marketplace then fails to pay the
+ * creator (the settle step), it refunds the buyer and publishes {@code
+ * marketplace.membership.payout-failed} so Core can undo that grant — otherwise a
+ * refunded buyer would keep a month of free access. On its own queue/DLQ rather than
+ * sharing {@code core.membership-saga.q} with the charged-event listener: that listener
+ * parses every message strictly as {@link
  * com.dannest.membership.event.PurchaseInitiatedEvent}, so a settle_failed message on
  * the same queue would just fail to parse and be dropped as malformed.
  */
@@ -33,7 +34,7 @@ public class MembershipRevokedListener {
     private final Idempotency idempotency;
     private final MembershipService membershipService;
 
-    @RabbitListener(queues = "core.marketplace.settle-failed")
+    @RabbitListener(queues = "core.membership-payout-failed.q")
     @Transactional
     public void onSettleFailed(Message message) {
         MembershipSettleFailedEvent event;

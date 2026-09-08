@@ -3,7 +3,7 @@ package com.dannest.membership.event;
 import java.util.UUID;
 
 /**
- * Consumed from services/marketplace (routing key {@code mkt.membership.purchase_initiated}) —
+ * Consumed from services/marketplace (routing key {@code marketplace.membership.charged}) —
  * the buyer has been charged, marketplace is asking Core to confirm and grant access.
  * {@code priceCents} is re-validated here against the collection's own price; marketplace's
  * copy is only what it charged, never trusted as the source of truth for whether that
