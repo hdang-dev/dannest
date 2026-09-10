@@ -63,7 +63,7 @@ export default function TrendingPage() {
               posts={posts}
               onEdit={setEditingPost}
               onLike={toggleLike}
-              emptyLabel="Nothing trending yet — like or comment on a post to get it started."
+              emptyLabel="Nothing's buzzing yet — like or comment to get things going."
             />
           )}
         </main>

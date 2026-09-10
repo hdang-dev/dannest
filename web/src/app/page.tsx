@@ -5,8 +5,9 @@ import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import CollectionsStrip from "@/components/CollectionsStrip";
 import PostFeed from "@/components/PostFeed";
-import LoadingState from "@/components/LoadingState";
-import NewPostFab from "@/components/NewPostFab";
+import PostFeedSkeleton from "@/components/PostFeedSkeleton";
+import WelcomeCard from "@/components/WelcomeCard";
+import StartPostBar from "@/components/StartPostBar";
 import PostComposerModal from "@/components/PostComposerModal";
 import { listFeed, likePost, unlikePost, type Post } from "@/lib/posts";
 import { useToast } from "@/lib/toast";
@@ -71,18 +72,20 @@ export default function Home() {
           {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
           {posts === null ? (
-            <LoadingState />
+            <PostFeedSkeleton />
+          ) : posts.length === 0 ? (
+            <WelcomeCard onCreate={() => setComposer({ mode: "create" })} />
           ) : (
-            <PostFeed
-              posts={posts}
-              onEdit={(post) => setComposer({ mode: "edit", post })}
-              onLike={toggleLike}
-              emptyLabel="No posts yet — create your first one."
-            />
+            <>
+              <StartPostBar onClick={() => setComposer({ mode: "create" })} />
+              <PostFeed
+                posts={posts}
+                onEdit={(post) => setComposer({ mode: "edit", post })}
+                onLike={toggleLike}
+              />
+            </>
           )}
         </main>
-
-        <NewPostFab onClick={() => setComposer({ mode: "create" })} />
       </div>
 
       {composer && (

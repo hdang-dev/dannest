@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import PostFeed from "@/components/PostFeed";
-import NewPostFab from "@/components/NewPostFab";
+import StartPostBar from "@/components/StartPostBar";
 import PostComposerModal from "@/components/PostComposerModal";
 import CollectionFormModal from "@/components/CollectionFormModal";
 import MembershipCheckoutModal from "@/components/MembershipCheckoutModal";
@@ -357,6 +357,13 @@ export default function CollectionPage() {
                 {locked ? "—" : (posts?.length ?? 0)} {(posts?.length ?? 0) === 1 && !locked ? "post" : "posts"}
               </p>
 
+              {mine && !locked && (
+                <StartPostBar
+                  onClick={() => setComposer({ mode: "create" })}
+                  label={`Pop something new into ${collection.name}…`}
+                />
+              )}
+
               {locked ? (
                 <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 py-10 text-center dark:border-slate-700">
                   <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -378,12 +385,10 @@ export default function CollectionPage() {
                   onLike={toggleLike}
                   focusPostId={focusPostId}
                   focusCommentId={focusCommentId}
-                  emptyLabel="No posts in this collection yet."
+                  emptyLabel={mine ? "This nest is empty — pop something in! 🪺" : "Nothing here yet — check back soon."}
                 />
               )}
             </main>
-
-            {mine && <NewPostFab onClick={() => setComposer({ mode: "create" })} />}
           </>
         )}
       </div>
