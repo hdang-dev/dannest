@@ -136,7 +136,9 @@ export default function PostCard({ post, onEdit, onLike, focusPostId, focusComme
       <div className="px-4 pb-3">
         <h2 className="font-semibold text-slate-900 dark:text-slate-100">{post.title}</h2>
         {post.content && (
-          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{post.content}</p>
+          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            {post.content}
+          </p>
         )}
       </div>
 

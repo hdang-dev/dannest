@@ -17,6 +17,8 @@ type Props = {
   aspect?: number;
   /** "round" shows a circular selection mask — used for avatars. */
   cropShape?: "rect" | "round";
+  /** Fill the parent (which must size it) instead of holding the `aspect` ratio box. */
+  fill?: boolean;
   /** Reports the crop as fractions (0..1) of the image. */
   onCropChange: (crop: Crop) => void;
 };
@@ -31,6 +33,7 @@ export default function ImageCropper({
   initialCrop,
   aspect = 16 / 10,
   cropShape = "rect",
+  fill = false,
   onCropChange,
 }: Props) {
   const [fileSrc, setFileSrc] = useState("");
@@ -46,7 +49,10 @@ export default function ImageCropper({
 
   const src = imageUrl ?? fileSrc;
 
-  const initialPct: Area | undefined =
+  // Frozen at mount: react-easy-crop re-applies `initialCroppedAreaPercentages`
+  // whenever it changes, so feeding the live crop back here would fight the user's
+  // adjustments (and effectively discard them). Remount (via `key`) to re-seed.
+  const [initialPct] = useState<Area | undefined>(() =>
     initialCrop && !(initialCrop.width >= 0.999 && initialCrop.height >= 0.999)
       ? {
           x: initialCrop.x * 100,
@@ -54,12 +60,17 @@ export default function ImageCropper({
           width: initialCrop.width * 100,
           height: initialCrop.height * 100,
         }
-      : undefined;
+      : undefined,
+  );
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-xl bg-slate-900"
-      style={{ aspectRatio: aspect }}
+      className={
+        fill
+          ? "relative h-full w-full overflow-hidden bg-slate-900"
+          : "relative w-full overflow-hidden rounded-xl bg-slate-900"
+      }
+      style={fill ? undefined : { aspectRatio: aspect }}
     >
       {src && (
         <Cropper
