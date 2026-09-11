@@ -2,12 +2,10 @@
 
 // Wakes core, marketplace, and notification in parallel instead of letting
 // them wake serially, on demand, as features happen to need them (see
-// instrumentation.ts for the server-side half of this). Two producers feed
-// one shared "is anything warming up" store: the proactive pings below, and
-// api.ts's doFetch, which flags a real request as "warming" if it's slow
-// enough to plausibly be a cold Render service waking up. <WarmupBanner />
-// is the single consumer — it shows while either producer has something in
-// flight.
+// instrumentation.ts for the server-side half of this). <WarmupBanner/>
+// shows for as long as any of the three pings is still outstanding — no
+// hard cap, since hiding it early just means lying about being ready while
+// the app still doesn't work.
 
 import { useEffect, useState } from "react";
 import { HEALTH_ENDPOINTS } from "./config";
@@ -16,37 +14,12 @@ import { HEALTH_ENDPOINTS } from "./config";
 const RECHECK_INTERVAL_MS = 10 * 60 * 1000;
 // Don't flash the banner for the common case where everything's already warm.
 const BANNER_DELAY_MS = 400;
-// Hard cap so a genuine outage (not just a slow wake) doesn't wedge the banner
-// open. We don't have a solid number for Render's actual wake time, so this
-// errs high rather than risk hiding the banner while a service is still cold.
-const BANNER_MAX_MS = 60_000;
-// Most warm requests resolve well under this; a cold wake takes ~30s, so this
-// cleanly separates "probably cold" from "just a bit slow". Used by api.ts.
-export const SLOW_REQUEST_MS = 700;
-
-// --- shared store: how many warming-up operations are in flight right now ---
-// Same lightweight callback-registry pattern as api.ts's onUnauthorized — a
-// full React context would be overkill for one consumer plus one non-React
-// producer (doFetch).
 
 let warmingCount = 0;
 const listeners = new Set<() => void>();
 
 function notifyListeners(): void {
   listeners.forEach((listener) => listener());
-}
-
-/** Call when a potentially-cold operation starts; call the returned function when it settles. */
-export function beginWarming(): () => void {
-  warmingCount++;
-  notifyListeners();
-  let ended = false;
-  return () => {
-    if (ended) return;
-    ended = true;
-    warmingCount--;
-    notifyListeners();
-  };
 }
 
 function subscribeWarming(listener: () => void): () => void {
@@ -58,16 +31,18 @@ function isWarming(): boolean {
   return warmingCount > 0;
 }
 
-// --- proactive background pings ---------------------------------------------
-
 function pingAll(): Promise<unknown> {
   return Promise.allSettled(HEALTH_ENDPOINTS.map(({ url }) => fetch(url, { cache: "no-store" })));
 }
 
-/** Pings all three services and tracks it in the shared store, so the banner can react. */
+/** Pings all three services and tracks it, so the banner can react. */
 function trackedPing(): void {
-  const end = beginWarming();
-  pingAll().finally(end);
+  warmingCount++;
+  notifyListeners();
+  pingAll().finally(() => {
+    warmingCount--;
+    notifyListeners();
+  });
 }
 
 function useServiceWarmup(): void {
@@ -94,28 +69,20 @@ function useServiceWarmup(): void {
   }, []);
 }
 
-// --- banner -------------------------------------------------------------
-
 export function WarmupBanner() {
   useServiceWarmup();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     let showTimer: ReturnType<typeof setTimeout> | undefined;
-    let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
     function handleChange() {
       if (isWarming()) {
         if (showTimer) return; // already scheduled
-        showTimer = setTimeout(() => {
-          setVisible(true);
-          hideTimer = setTimeout(() => setVisible(false), BANNER_MAX_MS);
-        }, BANNER_DELAY_MS);
+        showTimer = setTimeout(() => setVisible(true), BANNER_DELAY_MS);
       } else {
         clearTimeout(showTimer);
-        clearTimeout(hideTimer);
         showTimer = undefined;
-        hideTimer = undefined;
         setVisible(false);
       }
     }
@@ -126,7 +93,6 @@ export function WarmupBanner() {
     return () => {
       unsubscribe();
       clearTimeout(showTimer);
-      clearTimeout(hideTimer);
     };
   }, []);
 

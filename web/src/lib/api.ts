@@ -6,7 +6,6 @@
 
 import { API_URL } from "./config";
 import { getToken, setToken } from "./token";
-import { beginWarming, SLOW_REQUEST_MS } from "./warmup";
 
 /** Thrown when the API responds with a non-2xx status. */
 export class ApiError extends Error {
@@ -67,15 +66,6 @@ export function refreshSession(): Promise<RefreshedSession | null> {
 
 function doFetch(path: string, init: RequestInit, baseUrl: string, token: string | null): Promise<Response> {
   const isFormData = init.body instanceof FormData;
-
-  // If this is still in flight past SLOW_REQUEST_MS, it's plausibly a cold
-  // Render service waking up rather than ordinary latency — flag it so
-  // WarmupBanner shows, even when no proactive ping caught it first.
-  let endWarming: (() => void) | null = null;
-  const slowTimer = setTimeout(() => {
-    endWarming = beginWarming();
-  }, SLOW_REQUEST_MS);
-
   return fetch(`${baseUrl}${path}`, {
     ...init,
     // Only /auth/refresh and /auth/logout actually read a cookie (it's scoped to
@@ -87,9 +77,6 @@ function doFetch(path: string, init: RequestInit, baseUrl: string, token: string
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
-  }).finally(() => {
-    clearTimeout(slowTimer);
-    endWarming?.();
   });
 }
 

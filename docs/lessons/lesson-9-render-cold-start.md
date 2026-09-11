@@ -109,38 +109,30 @@ Proactive pings solve the *first* wake, but a tab can outlive them:
   ticks, but no network call goes out. This is what makes the whole approach
   compatible with the free-tier budget: nothing pings while nobody's looking.
 
-## 5. Proactive pings can't guarantee zero cold hits — so there's a fallback
+## 5. Two things tried and backed out of
 
-Background pings reduce *how often* a real request lands on a sleeping
-service. They can't guarantee it never happens — a request can still land in
-the gap between pings. Every authenticated call in the app already funnels
-through one function, `doFetch` in
-[`web/src/lib/api.ts`](../../web/src/lib/api.ts), so that's where a
-request-driven fallback belongs: start a ~700ms timer when a request begins
-(ordinary warm requests resolve well under that; a cold wake takes ~30s, so
-the threshold cleanly separates "probably cold" from "just a bit slow"). If
-the request is still pending when it fires, flag it as warming; clear the
-flag the moment the request settles, success or failure either way.
+**A hard cap on the banner.** First version force-hid the banner after a
+fixed timeout (40s, then 60s) so a genuine outage wouldn't wedge it open
+forever. Wrong call — we don't have a solid number for Render's actual wake
+time, and hiding the banner early just means *lying* that the app is ready
+while it still isn't. Removed the cap entirely: the banner now stays up for
+exactly as long as `isWarming()` is true, however long that takes.
 
-Rather than two disconnected indicators, both producers feed **one shared
-external store** — a plain module-level in-flight counter with a subscriber
-set in `lib/warmup.ts`, the same lightweight callback-registry pattern
-`api.ts` already used for `onUnauthorized`. `beginWarming()` returns an "end"
-callback; `<WarmupBanner/>` is the only consumer, and just renders while the
-count is above zero:
-
-```
- useServiceWarmup()  ──┐
- (mount / visible)     │
-                        ├──▶ beginWarming()/end() ──▶ [in-flight counter] ──▶ <WarmupBanner/>
- doFetch() in api.ts ──┘        (lib/warmup.ts)         (subscribeWarming)     (shows if >0,
- (any slow request)                                                            400ms delay,
-                                                                                 60s cap)
-```
-
-The 400ms show-delay and 60s hard cap matter as much as the mechanism: no
-flash on the common case where everything's already warm, and no banner stuck
-open forever if something is genuinely down rather than just slow to wake.
+**A generic fallback tied to every API call.** The proactive pings reduce
+*how often* a real request lands on a sleeping service, but can't guarantee
+it never happens — so the first instinct was to also flag any request in
+`doFetch` ([`web/src/lib/api.ts`](../../web/src/lib/api.ts)) that was still
+pending past ~700ms, on the theory that it's plausibly a cold service. It
+technically worked, but it couldn't actually tell a cold start apart from
+ordinary slow network — `doFetch` has no way to know *why* a request is
+slow — so the banner would show its free-tier copy for a plain bad-network
+blip, which read as simply wrong. Pulled it out rather than patch the
+wording: a global banner for "some request somewhere is a little slow" is
+also just the wrong vehicle for that signal — it can't say *which* thing is
+slow, where a feature's own existing loading state (skeleton, spinner) can,
+and already exists for exactly this. The banner is proactive-pings-only now;
+a cold hit that slips past them just shows whatever local loading state that
+feature already has, honestly, with no invented explanation.
 
 ## 6. Verifying it for real, not just type-checking it
 
@@ -181,9 +173,11 @@ the kind of thing that looks fine in dev and does nothing in prod.
 - Handled the two session-length gaps proactive pings alone can't cover
   (long-idle-but-open, and backgrounded-then-refocused) without spending
   instance-hours on tabs nobody's looking at.
-- Added a request-driven fallback so the UI never silently hangs on a cold
-  hit that slipped past the proactive pings — one shared store, one banner,
-  two producers.
+- Tried a generic request-driven fallback for cold hits that slip past the
+  proactive pings, found it couldn't distinguish a cold start from ordinary
+  slow network, and backed it out rather than ship a banner that's
+  confidently wrong some of the time — a feature's own loading state already
+  covers that case, honestly.
 - Proved the two riskiest, most silent parts (the boot-time hook actually
   firing, and build-time vs. runtime env) against a real production-mode
   build instead of trusting a type-check.
@@ -197,8 +191,8 @@ the kind of thing that looks fine in dev and does nothing in prod.
 | Serial per-service wake-up on user navigation | Fire all wake pings in parallel, as early as possible (server boot + client mount) |
 | A long-open tab lets a backend re-sleep mid-session | Silent re-ping on an interval, only while the tab is visible |
 | A backgrounded tab, refocused later | Re-ping immediately on `visibilitychange` → `visible`, don't wait for the next tick |
-| Proactive pings still miss occasionally | A generic fallback at the shared fetch chokepoint (a "still pending past Nms" timer) |
-| Two triggers, one banner | One shared in-flight counter + subscriber store, not two independent indicators |
+| A global "loading" signal that can't tell *why* | Don't guess — let the feature's own local loading state cover it instead |
+| A guessed timeout to hide a "waking up" banner | Don't cap it — hiding early just means lying that it's ready |
 | A background hook fails silently | Prove it against a real prod-mode boot (build args, no runtime env) — don't trust the read |
 
 ## Key words
