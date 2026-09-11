@@ -15,6 +15,18 @@ export const NOTIFICATION_API_URL =
 export const MARKETPLACE_API_URL =
   process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:8092";
 
+// Render's free tier spins each service down after 15 idle minutes and takes
+// ~30s to wake one on the next request. Core gets warmed implicitly by
+// AuthProvider's refresh call on every load, but marketplace and notification
+// otherwise only wake when a user happens to hit a feature that needs them —
+// see lib/warmup.ts and instrumentation.ts, which ping all three in parallel
+// as early as possible instead of waking them one at a time, on demand.
+export const HEALTH_ENDPOINTS: { name: string; url: string }[] = [
+  { name: "core", url: `${API_URL}/actuator/health` },
+  { name: "marketplace", url: `${MARKETPLACE_API_URL}/healthz` },
+  { name: "notification", url: `${NOTIFICATION_API_URL}/actuator/health` },
+];
+
 export const GOOGLE_CLIENT_ID =
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
