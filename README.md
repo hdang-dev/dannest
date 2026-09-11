@@ -130,6 +130,7 @@ things were built the way they were, mistakes included:
 | 6 | [Feed caching, a leaderboard, and a fix we didn't need](docs/lessons/lesson-6-feed-cache-and-trending.md) |
 | 7 | [Folding media back into Core](docs/lessons/lesson-7-remerging-media.md) |
 | 8 | [The membership saga](docs/lessons/lesson-8-membership-saga.md) — choreography, outbox/inbox, Stripe Connect, compensation |
+| 9 | [Waking up for free](docs/lessons/lesson-9-render-cold-start.md) — Render free-tier cold starts, parallel wake-up, a shared warming indicator |
 
 **Technical reference** (`docs/tech/`) — current-state, not a story:
 
