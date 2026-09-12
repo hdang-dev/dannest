@@ -1,8 +1,8 @@
 import app from "./app";
 import { connect as connectMongo } from "./db/mongoose";
-import { connect as connectRabbit } from "./rabbit/client";
-import { startOutboxPoller } from "./outbox/poller";
-import { startMembershipReplyListener } from "./membership/membershipReplyListener";
+import { connect as connectRabbit } from "./messaging/rabbit.client";
+import { startOutboxPoller } from "./services/outboxPoller.service";
+import { startMembershipReplyListener } from "./messaging/membershipReplyListener";
 import { env } from "./config/env";
 
 async function start(): Promise<void> {

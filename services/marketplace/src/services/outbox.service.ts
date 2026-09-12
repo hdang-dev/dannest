@@ -4,7 +4,7 @@
 // @Transactional context (Mongoose has no such thing — the session must be threaded
 // through explicitly).
 import { ClientSession } from "mongoose";
-import OutboxEvent from "./OutboxEvent";
+import OutboxEvent from "../models/OutboxEvent";
 
 export async function writeOutboxEvent(
   session: ClientSession,

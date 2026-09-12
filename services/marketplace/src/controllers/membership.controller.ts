@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { BadRequestError } from "../errors";
-import * as membershipService from "./membershipService";
+import * as membershipService from "../services/membership.service";
 
 async function initiate(req: Request, res: Response): Promise<void> {
   const { collectionId, priceCents } = req.body;

@@ -7,7 +7,7 @@ import Stripe from "stripe";
 import { env } from "../config/env";
 import { stripe } from "../stripe/client";
 import { BadRequestError } from "../errors";
-import * as membershipService from "./membershipService";
+import * as membershipService from "../services/membership.service";
 
 export async function handle(req: Request, res: Response): Promise<void> {
   const signature = req.headers["stripe-signature"];

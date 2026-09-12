@@ -1,7 +1,7 @@
 // Stripe Connect Express onboarding — the one-time step that lets a creator receive
 // their cut of a membership sale (see docs/lessons on the membership saga once it
 // exists). Core never sees any of this; it only ever hears a userId back from us.
-import ConnectedAccount, { ConnectedAccountDocument } from "./ConnectedAccount";
+import ConnectedAccount, { ConnectedAccountDocument } from "../models/ConnectedAccount";
 import { stripe } from "../stripe/client";
 import { env } from "../config/env";
 import { BadRequestError } from "../errors";

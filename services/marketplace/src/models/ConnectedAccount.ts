@@ -1,5 +1,5 @@
 // A creator's Stripe Express account — the destination for their cut of a membership
-// sale (see membership/ once the saga exists). One per user; created lazily the first
+// sale (see the membership saga in services/membership.service.ts). One per user; created lazily the first
 // time they start onboarding. chargesEnabled/payoutsEnabled are a cache of Stripe's own
 // account status, refreshed whenever we check it — never the source of truth.
 import { Document, Schema, model } from "mongoose";

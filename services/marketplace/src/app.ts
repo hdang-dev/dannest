@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
 import { env, stripeConfigured } from "./config/env";
-import errorHandler from "./middleware/errorHandler";
-import connectRoutes from "./connect/connect.routes";
-import membershipRoutes from "./membership/membership.routes";
-import * as stripeWebhookController from "./membership/stripeWebhookController";
+import errorHandler from "./middlewares/error.middleware";
+import connectRoutes from "./routes/connect.routes";
+import membershipRoutes from "./routes/membership.routes";
+import * as stripeWebhookController from "./controllers/webhook.controller";
 
 const app = express();
 

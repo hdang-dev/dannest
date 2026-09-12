@@ -20,7 +20,7 @@ export async function connect(): Promise<void> {
 
 export function getChannel(): Channel {
   if (!channel) {
-    throw new Error("RabbitMQ channel not initialized — call rabbit/client.connect() first");
+    throw new Error("RabbitMQ channel not initialized — call messaging/rabbit.client.connect() first");
   }
   return channel;
 }

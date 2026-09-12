@@ -5,9 +5,9 @@
 // depends on this having actually run.
 import { randomUUID } from "crypto";
 import { withTransaction } from "../db/transaction";
-import { claimInTransaction } from "../inbox/idempotency";
-import { writeOutboxEvent } from "../outbox/writer";
-import { MembershipPurchaseDocument } from "./MembershipPurchase";
+import { claimInTransaction } from "./inbox.service";
+import { writeOutboxEvent } from "./outbox.service";
+import { MembershipPurchaseDocument } from "../models/MembershipPurchase";
 
 export async function startSagaFromCharge(
   purchase: MembershipPurchaseDocument,

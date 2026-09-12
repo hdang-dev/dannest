@@ -2,8 +2,8 @@
 // just leaves publishedAt null — picked up again next tick. Single instance (like every
 // other service in this project), so a plain find+loop is fine — no atomic claim/lock
 // needed the way a multi-instance poller would require.
-import { EVENTS_EXCHANGE, getChannel } from "../rabbit/client";
-import OutboxEvent from "./OutboxEvent";
+import { EVENTS_EXCHANGE, getChannel } from "../messaging/rabbit.client";
+import OutboxEvent from "../models/OutboxEvent";
 
 const POLL_INTERVAL_MS = 1000;
 const BATCH_SIZE = 100;

@@ -4,7 +4,7 @@
 // unhandled message + default requeue is how this codebase already hit an infinite
 // redelivery loop once).
 import { ConsumeMessage } from "amqplib";
-import { EVENTS_EXCHANGE, getChannel } from "./client";
+import { EVENTS_EXCHANGE, getChannel } from "./rabbit.client";
 
 export interface ConsumeOptions {
   queue: string;

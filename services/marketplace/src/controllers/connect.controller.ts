@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import * as connectService from "./connectService";
+import * as connectService from "../services/connect.service";
 
 // No try/catch: Express 5 forwards a rejected promise from an async handler straight
 // to errorHandler on its own — see app.ts's comment on why we're on 5, not 4.

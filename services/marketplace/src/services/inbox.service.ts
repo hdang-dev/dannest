@@ -1,5 +1,5 @@
 import { ClientSession } from "mongoose";
-import InboxEvent from "./InboxEvent";
+import InboxEvent from "../models/InboxEvent";
 
 /**
  * Call this as the very first thing a handler does IF nothing it's about to do can

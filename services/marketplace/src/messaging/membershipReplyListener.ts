@@ -1,6 +1,6 @@
 // Consumes Core's half of the saga: core.membership.granted / core.membership.rejected.
-import { consume } from "../rabbit/consume";
-import * as membershipService from "./membershipService";
+import { consume } from "./consume";
+import * as membershipService from "../services/membership.service";
 
 const QUEUE = "marketplace.membership-saga.q";
 const DEAD_LETTER_QUEUE = "marketplace.membership-saga.dlq";
