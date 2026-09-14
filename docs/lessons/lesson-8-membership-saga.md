@@ -170,7 +170,7 @@ The fix — **do the fallible external thing first, claim only once it's succeed
 // RIGHT
 await stripe.transfers.create(..., { idempotencyKey: `membership-transfer:${purchaseId}` });
 await withTransaction(async (session) => {
-  if (!(await claimInTransaction(session, eventId, "marketplace.membership"))) return;
+  if (!(await claim(session, eventId, "marketplace.membership"))) return;
   purchase.status = "CONFIRMED";
   await purchase.save({ session });
 });

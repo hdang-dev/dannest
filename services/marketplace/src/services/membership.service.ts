@@ -21,7 +21,7 @@
 // step (a race between two deliveries, or a hand replay) reuse the original
 // transfer/refund instead of moving money twice.
 import { BadRequestError, NotFoundError } from "../errors";
-import { claimInTransaction } from "./inbox.service";
+import { claim } from "./inbox.service";
 import { withTransaction } from "../db/transaction";
 import { requireConnectedAccount } from "./connect.service";
 import { stripe } from "../stripe/client";
@@ -114,7 +114,7 @@ export async function markPaymentFailed(
   if (!purchase || purchase.status !== "PENDING_PAYMENT") return;
 
   await withTransaction(async (session) => {
-    if (!(await claimInTransaction(session, stripeEventId, "marketplace.stripe.webhook"))) return;
+    if (!(await claim(session, stripeEventId, "marketplace.stripe.webhook"))) return;
     purchase.status = "PAYMENT_FAILED";
     purchase.reason = reason;
     await purchase.save({ session });
@@ -175,7 +175,7 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
       { idempotencyKey: `membership-settle-refund:${purchase.id}` },
     );
     await withTransaction(async (session) => {
-      if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+      if (!(await claim(session, payload.eventId, "marketplace.membership"))) return;
       purchase.status = "REFUNDED";
       purchase.reason = reason;
       await purchase.save({ session });
@@ -195,7 +195,7 @@ export async function handleActivated(payload: ActivatedPayload): Promise<void> 
   // instead would misread "couldn't save" as "couldn't pay the creator" and refund a
   // buyer whose creator was, in fact, already paid.
   await withTransaction(async (session) => {
-    if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+    if (!(await claim(session, payload.eventId, "marketplace.membership"))) return;
     purchase.status = "CONFIRMED";
     purchase.stripeTransferId = transfer.id;
     await purchase.save({ session });
@@ -212,7 +212,7 @@ export async function handleRejected(payload: RejectedPayload): Promise<void> {
     { idempotencyKey: `membership-reject-refund:${purchase.id}` },
   );
   await withTransaction(async (session) => {
-    if (!(await claimInTransaction(session, payload.eventId, "marketplace.membership"))) return;
+    if (!(await claim(session, payload.eventId, "marketplace.membership"))) return;
     purchase.status = "REFUNDED";
     purchase.reason = payload.reason;
     await purchase.save({ session });
