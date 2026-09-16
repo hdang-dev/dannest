@@ -23,6 +23,25 @@ export async function fileToWebp(file: Blob, maxDim = 2000, quality = 0.9): Prom
   );
 }
 
+const DRIVE_VIEW_URL = /^https:\/\/drive\.google\.com\/file\/d\/([^/]+)\/view/i;
+
+/**
+ * Google Drive's "Share" link (…/file/d/ID/view) opens Drive's HTML viewer, not the
+ * image bytes, so it fails to load as an <img src>. Drive's own "direct" endpoints
+ * (uc?export=view, drive.usercontent.google.com/download) send
+ * Cross-Origin-Resource-Policy: same-site, which browsers use to block exactly this
+ * cross-site <img> embedding — so those don't work either, despite loading fine via
+ * curl or a top-level navigation. lh3.googleusercontent.com (Google's photo CDN,
+ * also serving Drive thumbnails) sends Access-Control-Allow-Origin: * and no CORP
+ * header, so it's the only Drive-derived URL that's actually embeddable cross-site.
+ * Already-direct links (or any non-Drive URL) pass through unchanged.
+ */
+export function normalizeImageUrl(url: string): { url: string; reformatted: boolean } {
+  const match = url.match(DRIVE_VIEW_URL);
+  if (!match) return { url, reformatted: false };
+  return { url: `https://lh3.googleusercontent.com/d/${match[1]}`, reformatted: true };
+}
+
 export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

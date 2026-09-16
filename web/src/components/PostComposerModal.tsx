@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "r
 import DefaultAvatarIcon from "./DefaultAvatarIcon";
 import ImageCropper from "./ImageCropper";
 import PostGallery from "./PostGallery";
-import { fileToWebp } from "@/lib/image";
+import { fileToWebp, normalizeImageUrl } from "@/lib/image";
 import { coverStyle, croppedCoverStyle } from "@/lib/cover";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import {
   uploadMedia,
   createExternalMedia,
@@ -134,6 +135,7 @@ function ArrowLeftIcon() {
 
 export default function PostComposerModal({ mode, post, defaultCollectionId, onClose, onSaved }: Props) {
   const { user } = useAuth();
+  const { notify } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -252,12 +254,14 @@ export default function PostComposerModal({ mode, post, defaultCollectionId, onC
   // Only accept an image URL once we've confirmed it's a well-formed http(s) link
   // that actually loads as an image — no broken images get into a post.
   async function commitLink() {
-    const url = linkValue.trim();
-    if (!url || linkChecking) return;
-    if (!/^https?:\/\/\S+$/i.test(url)) {
+    const raw = linkValue.trim();
+    if (!raw || linkChecking) return;
+    if (!/^https?:\/\/\S+$/i.test(raw)) {
       setLinkError("Enter a full image URL starting with http:// or https://");
       return;
     }
+    const { url, reformatted } = normalizeImageUrl(raw);
+    if (reformatted) notify("Converted Google Drive link to a direct image link");
     setLinkChecking(true);
     setLinkError(null);
     const ok = await imageUrlLoads(url);

@@ -17,7 +17,8 @@ import {
   type Crop,
   FULL_CROP,
 } from "@/lib/media";
-import { fileToWebp } from "@/lib/image";
+import { fileToWebp, normalizeImageUrl } from "@/lib/image";
+import { useToast } from "@/lib/toast";
 import { coverStyle } from "@/lib/cover";
 import ImageCropper from "./ImageCropper";
 
@@ -35,6 +36,7 @@ type Editing =
   | { kind: "existing"; mediaId: string; url: string; crop: Crop };
 
 export default function CollectionFormModal({ mode, collection, onClose, onSaved }: Props) {
+  const { notify } = useToast();
   const [name, setName] = useState(collection?.name ?? "");
   const [description, setDescription] = useState(collection?.description ?? "");
   const [visibility, setVisibility] = useState<Visibility>(collection?.visibility ?? "PUBLIC");
@@ -107,8 +109,10 @@ export default function CollectionFormModal({ mode, collection, onClose, onSaved
   }
 
   function commitLink() {
-    const url = linkValue.trim();
-    if (!url) return;
+    const raw = linkValue.trim();
+    if (!raw) return;
+    const { url, reformatted } = normalizeImageUrl(raw);
+    if (reformatted) notify("Converted Google Drive link to a direct image link");
     setPendingCrop(null);
     setEditing({ kind: "url", url });
     closeChooser();

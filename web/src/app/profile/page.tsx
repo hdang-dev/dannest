@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { coverStyle } from "@/lib/cover";
 import { formatJoinDate } from "@/lib/time";
 import { createExternalMedia, uploadMedia, updateMediaCrop, FULL_CROP, type Crop } from "@/lib/media";
-import { fileToWebp } from "@/lib/image";
+import { fileToWebp, normalizeImageUrl } from "@/lib/image";
 import { getProfile, updateMyProfile, type Profile } from "@/lib/profile";
 import { useToast } from "@/lib/toast";
 
@@ -102,8 +102,10 @@ export default function ProfilePage() {
   }
 
   function commitLink() {
-    const url = linkValue.trim();
-    if (!url) return;
+    const raw = linkValue.trim();
+    if (!raw) return;
+    const { url, reformatted } = normalizeImageUrl(raw);
+    if (reformatted) notify("Converted Google Drive link to a direct image link");
     setPendingCrop(null);
     setAvatarEditing({ kind: "url", url, initialCrop: FULL_CROP });
     closeAvatarMenu();
