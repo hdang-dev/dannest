@@ -18,6 +18,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "DanNest — collect what you love",
   description: "A cozy social space to build collections and share the things you love.",
+  // Some hosts (e.g. Google Drive's lh3.googleusercontent.com) hotlink-block image
+  // requests that carry a third-party Referer, even from well-formed public URLs —
+  // suppressing it site-wide is what lets pasted external image links (media.ts
+  // createExternalMedia) actually render, since they're displayed as CSS
+  // background-images everywhere (lib/cover.ts) with no per-element referrer control.
+  referrer: "no-referrer",
 };
 
 export default function RootLayout({
