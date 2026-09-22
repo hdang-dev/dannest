@@ -14,7 +14,7 @@ export function startOutboxPoller(): void {
   }, POLL_INTERVAL_MS);
 }
 
-async function publishPending(): Promise<void> {
+export async function publishPending(): Promise<void> {
   const batch = await OutboxEvent.find({ publishedAt: null }).sort({ createdAt: 1 }).limit(BATCH_SIZE);
   if (batch.length === 0) return;
 
