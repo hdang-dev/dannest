@@ -140,6 +140,7 @@ jobs:
           java-version: 21
           cache: gradle
       - run: chmod +x gradlew
+      - run: ./gradlew test --no-daemon
       - run: ./gradlew build --no-daemon
 
   build-core:
@@ -213,6 +214,7 @@ jobs:
           java-version: 21
           cache: gradle
       - run: chmod +x gradlew
+      - run: ./gradlew test --no-daemon
       - run: ./gradlew build --no-daemon
 
   build-notification:
