@@ -2,6 +2,7 @@ package com.dannest.membership;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.dannest.TestcontainersConfiguration;
 import com.dannest.collection.Collection;
 import com.dannest.collection.CollectionRepository;
 import com.dannest.collection.Visibility;
@@ -16,13 +17,16 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Runs the real saga listener against a real Postgres: no mocking of the inbox claim,
- * the membership write, or the outbox write — the same three-table dance production runs.
+ * Runs the real saga listener against a real, disposable Postgres (Testcontainers —
+ * see TestcontainersConfiguration): no mocking of the inbox claim, the membership
+ * write, or the outbox write — the same three-table dance production runs.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @Transactional
 class MembershipSagaListenerIntegrationTest {
 

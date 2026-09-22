@@ -3,6 +3,7 @@ package com.dannest.post;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.dannest.TestcontainersConfiguration;
 import com.dannest.collection.Collection;
 import com.dannest.collection.CollectionRepository;
 import com.dannest.collection.Visibility;
@@ -15,15 +16,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Exercises PostService.list()'s real Specification-built queries and visibility rules
- * against a real Postgres — the parts a mocked unit test can't meaningfully verify, since
- * the filtering logic lives inside JPA query predicates, not plain Java branches.
+ * against a real, disposable Postgres + Redis (Testcontainers — see
+ * TestcontainersConfiguration) — the parts a mocked unit test can't meaningfully verify,
+ * since the filtering logic lives inside JPA query predicates, not plain Java branches.
  */
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 @Transactional
 class PostServiceVisibilityIntegrationTest {
 
