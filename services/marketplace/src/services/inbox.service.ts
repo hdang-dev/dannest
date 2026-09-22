@@ -12,6 +12,17 @@ import InboxEvent from "../models/InboxEvent";
  * Returns {@code true} the first time this exact event is seen (go ahead and process
  * it), {@code false} on a redelivery (RabbitMQ and Stripe both redeliver at least
  * once as a matter of course, not just on real failures — skip without erroring).
+ *
+ * The duplicate-key write above always runs inside a transaction (every call site
+ * goes through db/transaction.ts's withTransaction()). MongoDB aborts a transaction
+ * server-side the instant ANY write inside it fails — catching the error here does
+ * NOT undo that, so we must abort the session ourselves before returning false.
+ * Skipping this step leaves the session in a dead-but-still-"active" state: the
+ * driver's withTransaction() then tries to commit it, the commit fails, it retries
+ * the whole callback (hitting the same duplicate key again), and repeats until its
+ * internal ~120s retry budget is exhausted — turning a routine redelivery into a
+ * multi-minute hang. Calling abortTransaction() ourselves tells withTransaction()
+ * the transaction already ended, so it skips the commit/retry entirely.
  */
 export async function claim(
   session: ClientSession,
@@ -22,7 +33,10 @@ export async function claim(
     await InboxEvent.create([{ eventId, consumer }], { session });
     return true;
   } catch (err) {
-    if (isDuplicateKeyError(err)) return false;
+    if (isDuplicateKeyError(err)) {
+      await session.abortTransaction();
+      return false;
+    }
     throw err;
   }
 }
