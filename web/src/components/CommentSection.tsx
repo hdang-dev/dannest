@@ -354,7 +354,10 @@ export default function CommentSection({ postId, initialCount, onCountChange, fo
         setPinnedIds(new Set(acc.map((c) => c.id)));
         onCountChange?.(totalElements);
       } catch {
-        if (!cancelled) setError("Couldn't load comments.");
+        if (!cancelled) {
+          setError("Couldn't load comments.");
+          setComments((cur) => cur ?? []); // exit the loading state so the error above can actually render
+        }
       }
     }
 
@@ -363,7 +366,11 @@ export default function CommentSection({ postId, initialCount, onCountChange, fo
     } else {
       listComments(postId, { page: 0, size: PAGE_SIZE })
         .then(applyFirstPage)
-        .catch(() => !cancelled && setError("Couldn't load comments."));
+        .catch(() => {
+          if (cancelled) return;
+          setError("Couldn't load comments.");
+          setComments((cur) => cur ?? []); // exit the loading state so the error above can actually render
+        });
     }
     return () => {
       cancelled = true;
