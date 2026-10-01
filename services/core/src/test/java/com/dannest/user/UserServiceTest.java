@@ -50,6 +50,16 @@ class UserServiceTest {
     }
 
     @Test
+    void hidesTheEmailFromAnAnonymousViewer() {
+        UUID ownerId = UUID.randomUUID();
+        when(userRepository.findById(ownerId)).thenReturn(Optional.of(userWithId(ownerId)));
+
+        var response = userService.get(null, ownerId);
+
+        assertThat(response.email()).isNull();
+    }
+
+    @Test
     void showsTheEmailToTheOwnerThemselves() {
         UUID ownerId = UUID.randomUUID();
         when(userRepository.findById(ownerId)).thenReturn(Optional.of(userWithId(ownerId)));

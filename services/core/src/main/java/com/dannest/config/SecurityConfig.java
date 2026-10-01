@@ -7,6 +7,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -43,6 +44,20 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout")
                         .permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // Spring Boot renders error responses (e.g. a ResourceNotFoundException's
+                        // 404) by forwarding to /error. Without this, that forward is re-checked
+                        // and an anonymous caller's 404 on a public endpoint turns into a 401.
+                        .requestMatchers("/error").permitAll()
+                        // Read-only views behind the web app's public pages. Anonymous callers
+                        // reach these with a null viewer, and the services only let them see
+                        // PUBLIC, non-archived content.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/collections/{id}",
+                                "/api/v1/collections/{id}/posts",
+                                "/api/v1/posts/{postId}/comments",
+                                "/api/v1/users/{id}")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
         return http.build();

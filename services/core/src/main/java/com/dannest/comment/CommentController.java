@@ -30,11 +30,14 @@ public class CommentController {
         this.commentService = commentService;
     }
 
-    /** A post's comments (top-level and replies, flat), oldest-first unless the request specifies a sort. */
+    /**
+     * A post's comments (top-level and replies, flat), oldest-first unless the request specifies
+     * a sort. Open to anonymous callers.
+     */
     @GetMapping("/posts/{postId}/comments")
     public PagedResponse<CommentResponse> list(
             @AuthenticationPrincipal Jwt jwt, @PathVariable UUID postId, Pageable pageable) {
-        return commentService.list(currentUserId(jwt), postId, pageable);
+        return commentService.list(viewerId(jwt), postId, pageable);
     }
 
     @PostMapping("/posts/{postId}/comments")
@@ -62,5 +65,10 @@ public class CommentController {
 
     private static UUID currentUserId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
+    }
+
+    /** The caller's id, or null for an anonymous caller on a public endpoint. */
+    private static UUID viewerId(Jwt jwt) {
+        return jwt == null ? null : currentUserId(jwt);
     }
 }

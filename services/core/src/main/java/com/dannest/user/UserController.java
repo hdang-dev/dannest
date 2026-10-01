@@ -23,10 +23,10 @@ public class UserController {
         this.userService = userService;
     }
 
-    /** A user's profile (email is only included when viewing your own). */
+    /** A user's profile (email is only included when viewing your own). Open to anonymous callers. */
     @GetMapping("/{id}")
     public UserProfileResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return userService.get(currentUserId(jwt), id);
+        return userService.get(jwt == null ? null : currentUserId(jwt), id);
     }
 
     /** Update the caller's own profile. */

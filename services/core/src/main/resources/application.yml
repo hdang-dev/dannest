@@ -64,6 +64,10 @@ spring:
     # Backs refresh tokens only (see jwt.refresh-token-expiration-seconds below).
     # No caching uses Redis yet.
     data:
+        # Caps ?size= on every paged endpoint — some are now open to anonymous callers.
+        web:
+            pageable:
+                max-page-size: 100
         redis:
             host: ${REDIS_HOST:localhost}
             port: ${REDIS_PORT:6379}

@@ -45,14 +45,14 @@ public class PostController {
         return postService.list(currentUserId(jwt), scope, null, q, pageable);
     }
 
-    /** Posts in a single collection (if the caller may view it). */
+    /** Posts in a single collection (if the caller may view it). Open to anonymous callers. */
     @GetMapping("/collections/{collectionId}/posts")
     public PagedResponse<PostResponse> listByCollection(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID collectionId,
             @RequestParam(required = false) String q,
             Pageable pageable) {
-        return postService.list(currentUserId(jwt), null, collectionId, q, pageable);
+        return postService.list(viewerId(jwt), null, collectionId, q, pageable);
     }
 
     /**
@@ -109,5 +109,10 @@ public class PostController {
 
     private static UUID currentUserId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
+    }
+
+    /** The caller's id, or null for an anonymous caller on a public endpoint. */
+    private static UUID viewerId(Jwt jwt) {
+        return jwt == null ? null : currentUserId(jwt);
     }
 }

@@ -48,10 +48,10 @@ public class CollectionController {
         return collectionService.list(currentUserId(jwt), scope, visibility, archived, q, pageable);
     }
 
-    /** A single collection — visible if PUBLIC or owned by the caller. */
+    /** A single collection — visible if PUBLIC or owned by the caller. Open to anonymous callers. */
     @GetMapping("/{id}")
     public CollectionResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return collectionService.get(currentUserId(jwt), id);
+        return collectionService.get(viewerId(jwt), id);
     }
 
     @PostMapping
@@ -85,5 +85,10 @@ public class CollectionController {
 
     private static UUID currentUserId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
+    }
+
+    /** The caller's id, or null for an anonymous caller on a public endpoint. */
+    private static UUID viewerId(Jwt jwt) {
+        return jwt == null ? null : currentUserId(jwt);
     }
 }

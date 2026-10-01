@@ -152,4 +152,45 @@ class CollectionServiceTest {
         assertThatThrownBy(() -> collectionService.get(UUID.randomUUID(), collection.getId()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    // ----- anonymous viewer (public pages) -----
+
+    private Collection stubbedCollection(UUID ownerId, Visibility visibility) {
+        Collection collection = Collection.builder().ownerId(ownerId).name("C").visibility(visibility).build();
+        ReflectionTestUtils.setField(collection, "id", UUID.randomUUID());
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        return collection;
+    }
+
+    @Test
+    void anonymousViewerCanSeeAPublicCollection() {
+        UUID ownerId = UUID.randomUUID();
+        Collection collection = stubbedCollection(ownerId, Visibility.PUBLIC);
+        mockOwner(ownerId);
+
+        var response = collectionService.get(null, collection.getId());
+
+        assertThat(response.id()).isEqualTo(collection.getId());
+        assertThat(response.viewerHasMembership()).isFalse();
+    }
+
+    @Test
+    void anonymousViewerGets404ForPrivateAndMembersOnlyCollections() {
+        Collection privateOne = stubbedCollection(UUID.randomUUID(), Visibility.PRIVATE);
+        Collection membersOnly = stubbedCollection(UUID.randomUUID(), Visibility.MEMBERS_ONLY);
+
+        assertThatThrownBy(() -> collectionService.get(null, privateOne.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> collectionService.get(null, membersOnly.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void anonymousViewerGets404ForAnArchivedPublicCollection() {
+        Collection collection = stubbedCollection(UUID.randomUUID(), Visibility.PUBLIC);
+        collection.archive();
+
+        assertThatThrownBy(() -> collectionService.get(null, collection.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 }

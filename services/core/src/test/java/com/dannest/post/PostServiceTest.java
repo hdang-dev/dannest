@@ -280,6 +280,45 @@ class PostServiceTest {
         assertThatThrownBy(() -> postService.get(viewerId, postId)).isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ----- anonymous viewer (public pages) -----
+
+    @Test
+    void anonymousViewerSeesAPublicPostWithoutAPerUserLikeLookup() {
+        UUID postId = UUID.randomUUID();
+        UUID collectionId = UUID.randomUUID();
+        Post post = post(postId, collectionId, UUID.randomUUID());
+        Collection collection = collection(collectionId, UUID.randomUUID(), Visibility.PUBLIC);
+        when(postRepository.findByIdAndDeletedAtIsNull(postId)).thenReturn(Optional.of(post));
+        when(collectionRepository.findById(collectionId)).thenReturn(Optional.of(collection));
+        when(postMediaRepository.findByPostIdInOrderByDisplayOrder(any())).thenReturn(List.of());
+        when(postLikeRepository.countByPostIds(any())).thenReturn(List.of());
+        when(commentRepository.countByPostIds(any())).thenReturn(List.of());
+        when(collectionRepository.findAllById(any())).thenReturn(List.of(collection));
+        when(userRepository.findAllById(any())).thenReturn(List.of(user(post.getAuthorId())));
+
+        var response = postService.get(null, postId);
+
+        assertThat(response.likedByMe()).isFalse();
+        verify(postLikeRepository, never()).findLikedPostIds(any(), any());
+    }
+
+    @Test
+    void anonymousViewerGets404ForMembersOnlyAndArchivedCollections() {
+        UUID membersOnlyId = UUID.randomUUID();
+        UUID archivedId = UUID.randomUUID();
+        Collection archived = collection(archivedId, UUID.randomUUID(), Visibility.PUBLIC);
+        archived.archive();
+        when(collectionRepository.findById(membersOnlyId))
+                .thenReturn(Optional.of(collection(membersOnlyId, UUID.randomUUID(), Visibility.MEMBERS_ONLY)));
+        when(collectionRepository.findById(archivedId)).thenReturn(Optional.of(archived));
+
+        assertThatThrownBy(() -> postService.list(null, null, membersOnlyId, null, PageRequest.of(0, 20)))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> postService.list(null, null, archivedId, null, PageRequest.of(0, 20)))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(membershipRepository, never()).findByUserIdAndCollectionIdAndRevokedAtIsNull(any(), any());
+    }
+
     // ----- listTrending -----
 
     @Test

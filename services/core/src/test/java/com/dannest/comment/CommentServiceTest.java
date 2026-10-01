@@ -16,6 +16,8 @@ import com.dannest.comment.dto.UpdateCommentRequest;
 import com.dannest.common.BadRequestException;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.membership.CollectionMembership;
+import com.dannest.membership.CollectionMembershipRepository;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
 import com.dannest.post.Post;
@@ -23,6 +25,7 @@ import com.dannest.post.PostRepository;
 import com.dannest.post.TrendingScoreService;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +34,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,6 +49,9 @@ class CommentServiceTest {
 
     @Mock
     private CollectionRepository collectionRepository;
+
+    @Mock
+    private CollectionMembershipRepository membershipRepository;
 
     @Mock
     private UserRepository userRepository;
@@ -88,6 +96,74 @@ class CommentServiceTest {
 
         assertThatThrownBy(() -> commentService.create(UUID.randomUUID(), postId, new CreateCommentRequest("hi", null)))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ----- read visibility (incl. anonymous viewers on public pages) -----
+
+    /** Stubs a post in a fresh collection of the given visibility; returns the post id. */
+    private UUID stubPostIn(Collection collection) {
+        UUID postId = UUID.randomUUID();
+        Post post = post(postId, collection.getId(), UUID.randomUUID());
+        when(postRepository.findByIdAndDeletedAtIsNull(postId)).thenReturn(Optional.of(post));
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        return postId;
+    }
+
+    private Collection collectionOf(Visibility visibility) {
+        Collection c = Collection.builder().ownerId(UUID.randomUUID()).name("C").visibility(visibility).build();
+        ReflectionTestUtils.setField(c, "id", UUID.randomUUID());
+        return c;
+    }
+
+    @Test
+    void anonymousViewerCanReadCommentsOnAPublicPost() {
+        UUID postId = stubPostIn(collectionOf(Visibility.PUBLIC));
+        when(commentRepository.findByPostIdAndDeletedAtIsNull(eq(postId), any())).thenReturn(new PageImpl<>(List.of()));
+
+        var page = commentService.list(null, postId, PageRequest.of(0, 20));
+
+        assertThat(page.content()).isEmpty();
+    }
+
+    @Test
+    void anonymousViewerGets404ForCommentsOnPrivateMembersOnlyAndArchivedPosts() {
+        Collection archived = collectionOf(Visibility.PUBLIC);
+        archived.archive();
+        UUID privatePost = stubPostIn(collectionOf(Visibility.PRIVATE));
+        UUID membersOnlyPost = stubPostIn(collectionOf(Visibility.MEMBERS_ONLY));
+        UUID archivedPost = stubPostIn(archived);
+
+        for (UUID postId : List.of(privatePost, membersOnlyPost, archivedPost)) {
+            assertThatThrownBy(() -> commentService.list(null, postId, PageRequest.of(0, 20)))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Test
+    void aLoggedInNonMemberCannotReadCommentsOnAMembersOnlyPost() {
+        Collection membersOnly = collectionOf(Visibility.MEMBERS_ONLY);
+        UUID postId = stubPostIn(membersOnly);
+        UUID viewerId = UUID.randomUUID();
+        when(membershipRepository.findByUserIdAndCollectionIdAndRevokedAtIsNull(viewerId, membersOnly.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.list(viewerId, postId, PageRequest.of(0, 20)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void anActiveMemberCanReadCommentsOnAMembersOnlyPost() {
+        Collection membersOnly = collectionOf(Visibility.MEMBERS_ONLY);
+        UUID postId = stubPostIn(membersOnly);
+        UUID viewerId = UUID.randomUUID();
+        CollectionMembership membership = CollectionMembership.builder()
+                .userId(viewerId).collectionId(membersOnly.getId()).grantedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600)).build();
+        when(membershipRepository.findByUserIdAndCollectionIdAndRevokedAtIsNull(viewerId, membersOnly.getId()))
+                .thenReturn(Optional.of(membership));
+        when(commentRepository.findByPostIdAndDeletedAtIsNull(eq(postId), any())).thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(commentService.list(viewerId, postId, PageRequest.of(0, 20)).content()).isEmpty();
     }
 
     @Test

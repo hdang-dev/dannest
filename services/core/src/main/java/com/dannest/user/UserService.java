@@ -17,11 +17,11 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    /** A user's profile, as visible to {@code viewerId} (email is owner-only). */
+    /** A user's profile, as visible to {@code viewerId} (email is owner-only; null = anonymous). */
     @Transactional(readOnly = true)
     public UserProfileResponse get(UUID viewerId, UUID userId) {
         User user = findById(userId);
-        return UserProfileResponse.from(user, viewerId.equals(userId));
+        return UserProfileResponse.from(user, userId.equals(viewerId));
     }
 
     public UserProfileResponse updateMe(UUID userId, UpdateUserRequest request) {

@@ -11,6 +11,7 @@ import com.dannest.common.CropDto;
 import com.dannest.common.ForbiddenException;
 import com.dannest.common.PagedResponse;
 import com.dannest.common.ResourceNotFoundException;
+import com.dannest.membership.CollectionMembershipRepository;
 import com.dannest.notification.ActivityType;
 import com.dannest.notification.NotificationService;
 import com.dannest.notification.NotificationType;
@@ -19,6 +20,7 @@ import com.dannest.post.PostRepository;
 import com.dannest.post.TrendingScoreService;
 import com.dannest.user.User;
 import com.dannest.user.UserRepository;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,7 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
     private final CollectionRepository collectionRepository;
+    private final CollectionMembershipRepository membershipRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final TrendingScoreService trendingScoreService;
@@ -157,7 +160,11 @@ public class CommentService {
 
     // ----- helpers -------------------------------------------------------------------
 
-    /** Load a post the caller may view: its collection is PUBLIC, or the caller owns it / authored the post. */
+    /**
+     * Load a post the caller may view — the same rule as {@code PostService}: its collection is
+     * PUBLIC, the caller owns it / authored the post, or (MEMBERS_ONLY) holds an active
+     * membership. An anonymous caller ({@code userId} null) only sees PUBLIC, non-archived.
+     */
     private Post findVisiblePost(UUID userId, UUID postId) {
         Post post = postRepository
                 .findByIdAndDeletedAtIsNull(postId)
@@ -165,12 +172,26 @@ public class CommentService {
         Collection c = collectionRepository
                 .findById(post.getCollectionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Collection not found: " + post.getCollectionId()));
-        boolean owned = c.getOwnerId().equals(userId) || post.getAuthorId().equals(userId);
-        if (c.getVisibility() == Visibility.PRIVATE && !owned) {
-            // Hide the existence of posts in private collections from non-owners.
+        if (!isViewable(c, post, userId)) {
+            // Hide the existence of posts the caller isn't entitled to see.
             throw new ResourceNotFoundException("Post not found: " + postId);
         }
         return post;
+    }
+
+    private boolean isViewable(Collection c, Post post, UUID userId) {
+        if (userId == null) {
+            return c.getVisibility() == Visibility.PUBLIC && !c.isArchived();
+        }
+        boolean owned = c.getOwnerId().equals(userId) || post.getAuthorId().equals(userId);
+        return switch (c.getVisibility()) {
+            case PUBLIC -> true;
+            case PRIVATE -> owned;
+            case MEMBERS_ONLY -> owned || membershipRepository
+                    .findByUserIdAndCollectionIdAndRevokedAtIsNull(userId, c.getId())
+                    .filter(m -> m.isActive(Instant.now()))
+                    .isPresent();
+        };
     }
 
     /** Load a comment the caller must have authored to mutate; 404 if missing, 403 if not theirs. */

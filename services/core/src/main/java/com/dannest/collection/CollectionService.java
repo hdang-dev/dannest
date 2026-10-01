@@ -196,7 +196,7 @@ public class CollectionService {
                 .filter(c -> c.getVisibility() == Visibility.MEMBERS_ONLY)
                 .map(Collection::getId)
                 .toList();
-        Set<UUID> memberOf = membersOnlyIds.isEmpty()
+        Set<UUID> memberOf = membersOnlyIds.isEmpty() || viewerId == null
                 ? Set.of()
                 : membershipRepository.findByUserIdAndCollectionIdInAndRevokedAtIsNull(viewerId, membersOnlyIds)
                         .stream()
@@ -220,9 +220,19 @@ public class CollectionService {
         }
     }
 
-    /** Load a collection the caller is allowed to view: it's PUBLIC, or the caller owns it. */
+    /**
+     * Load a collection the caller is allowed to view: it's PUBLIC, or the caller owns it.
+     * An anonymous caller ({@code userId} null) only sees PUBLIC, non-archived collections —
+     * MEMBERS_ONLY stays hidden too, since there's no one to sell a membership to.
+     */
     private Collection findVisible(UUID userId, UUID collectionId) {
         Collection collection = findById(collectionId);
+        if (userId == null) {
+            if (collection.getVisibility() != Visibility.PUBLIC || collection.isArchived()) {
+                throw new ResourceNotFoundException("Collection not found: " + collectionId);
+            }
+            return collection;
+        }
         boolean owned = collection.getOwnerId().equals(userId);
         if (collection.getVisibility() == Visibility.PRIVATE && !owned) {
             // Hide the existence of private collections from non-owners.

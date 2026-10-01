@@ -353,7 +353,9 @@ public class PostService {
 
         Map<UUID, Long> likeCounts = toCountMap(postLikeRepository.countByPostIds(ids));
         Map<UUID, Long> commentCounts = toCountMap(commentRepository.countByPostIds(ids));
-        Set<UUID> likedByMe = new HashSet<>(postLikeRepository.findLikedPostIds(userId, ids));
+        Set<UUID> likedByMe = userId == null
+                ? Set.of()
+                : new HashSet<>(postLikeRepository.findLikedPostIds(userId, ids));
 
         Set<UUID> collectionIds = posts.stream().map(Post::getCollectionId).collect(Collectors.toSet());
         Map<UUID, Collection> collectionsById = toMap(collectionRepository.findAllById(collectionIds),
@@ -453,8 +455,14 @@ public class PostService {
         return isViewable(c, userId, owned);
     }
 
-    /** Shared visibility rule for a resolved collection — see {@link #isVisible} / {@link #requireVisibleCollection}. */
+    /**
+     * Shared visibility rule for a resolved collection — see {@link #isVisible} / {@link #requireVisibleCollection}.
+     * An anonymous caller ({@code userId} null) only sees PUBLIC, non-archived collections.
+     */
     private boolean isViewable(Collection collection, UUID userId, boolean owned) {
+        if (userId == null) {
+            return collection.getVisibility() == Visibility.PUBLIC && !collection.isArchived();
+        }
         return switch (collection.getVisibility()) {
             case PUBLIC -> true;
             case PRIVATE -> owned;
