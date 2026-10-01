@@ -82,7 +82,10 @@ export default function PostCard({ post, onEdit, onLike, focusPostId, focusComme
               {post.authorUsername}
             </Link>
             <span className="text-slate-300 dark:text-slate-600">·</span>
-            <span className="text-sm text-slate-400">{timeLabel}</span>
+            {/* "5m ago" can tick over between the server render and hydration. */}
+            <span className="text-sm text-slate-400" suppressHydrationWarning>
+              {timeLabel}
+            </span>
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             <Link

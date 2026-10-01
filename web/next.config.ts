@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: import.meta.dirname,
   },
+  // Partial prerendering + `use cache`: the public collection and profile pages send a
+  // static shell at once and stream in their (briefly cached) public content.
+  cacheComponents: true,
 };
 
 export default nextConfig;

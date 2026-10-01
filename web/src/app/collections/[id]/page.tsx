@@ -1,467 +1,65 @@
-"use client";
+// Server half of the collection page. It renders the anonymous, public view (from a
+// short-lived shared cache) so visitors and link previews get real content in the
+// first response; CollectionView then takes over in the browser and upgrades it for a
+// signed-in viewer. Anything the server can't show (private, members-only, Core down)
+// arrives as `initial = null`, and the browser fetches it with the viewer's own token.
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import type { Metadata } from "next";
 import Header from "@/components/Header";
-import PostFeed from "@/components/PostFeed";
-import StartPostBar from "@/components/StartPostBar";
-import PostComposerModal from "@/components/PostComposerModal";
-import CollectionFormModal from "@/components/CollectionFormModal";
-import MembershipCheckoutModal from "@/components/MembershipCheckoutModal";
-import ConfirmDialog from "@/components/ConfirmDialog";
-import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import LoadingState from "@/components/LoadingState";
-import { gradientFor } from "@/lib/gradient";
-import { coverStyle } from "@/lib/cover";
-import { FULL_CROP } from "@/lib/media";
-import { useAuth } from "@/lib/auth";
-import { useRequireLogin } from "@/lib/signInPrompt";
-import { currentPath, loginUrl } from "@/lib/loginRedirect";
-import { useToast } from "@/lib/toast";
-import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
-import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
-import { followCollection, getFollowStatus, unfollowCollection } from "@/lib/follows";
-import type { MembershipPurchase } from "@/lib/marketplace";
+import { getPublicCollectionWithPosts } from "@/lib/server/publicApi";
+import CollectionView from "./CollectionView";
 
-type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
+type Params = { params: Promise<{ id: string }> };
 
-export default function CollectionPage() {
-  const { id } = useParams<{ id: string }>();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  // From a notification deep link — scroll to (and, for a reply, open) this post/comment.
-  const focusPostId = searchParams.get("post");
-  const focusCommentId = searchParams.get("comment");
-  const { user, loading: authLoading } = useAuth();
-  const requireLogin = useRequireLogin();
-  const { notify } = useToast();
-  const [collection, setCollection] = useState<Collection | null | undefined>(undefined);
-  const [posts, setPosts] = useState<Post[] | null>(null);
-  const [composer, setComposer] = useState<Composer>(null);
-  const [editing, setEditing] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-  const [archiving, setArchiving] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-
-  const mine = !!user && !!collection && collection.ownerId === user.id;
-
-  function reload() {
-    getCollection(id)
-      .then((c) => setCollection(c))
-      .catch(() => setCollection(null));
-    listByCollection(id, { size: 50 })
-      .then((page) => setPosts(page.content))
-      // A locked members-only collection 404s its post list for a non-member — that's
-      // expected, the "buy to unlock" panel below covers that case, not an error.
-      .catch(() => setPosts([]));
+async function loadPublic(id: string) {
+  try {
+    return await getPublicCollectionWithPosts(id);
+  } catch {
+    return null; // Core slow or erroring — the browser will try instead
   }
+}
 
-  // After a settle-fail refund, Core still has to consume a separate async event to
-  // revoke the membership it already granted — that can lag behind the purchase
-  // itself reaching REFUNDED by a beat (they're two independent hops in the saga,
-  // not one atomic step). A single immediate reload can land in that gap and show
-  // already-refunded content as still unlocked. Poll briefly until the collection
-  // agrees access is gone, instead of trusting one read right after the charge.
-  async function reloadUntilRevoked() {
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      const c = await getCollection(id).catch(() => null);
-      if (c) {
-        setCollection(c);
-        if (!c.viewerHasMembership) break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 800));
-    }
-    listByCollection(id, { size: 50 })
-      .then((page) => setPosts(page.content))
-      .catch(() => setPosts([]));
-  }
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { id } = await params;
+  const data = await loadPublic(id);
+  // Nothing public to describe — keep the site defaults rather than hint at what's there.
+  if (!data) return {};
 
-  // Load the real collection + its posts from the backend — but only once the session
-  // check has finished. This page is public, so it mounts before the access token is
-  // restored; fetching any earlier would go out anonymous, and an owner would get
-  // "not found" on their own private collection. Re-runs when the viewer signs in/out.
-  const viewerId = user?.id;
-  useEffect(() => {
-    if (authLoading) return;
-    let cancelled = false;
-    getCollection(id)
-      .then((c) => !cancelled && setCollection(c))
-      .catch(() => !cancelled && setCollection(null));
-    listByCollection(id, { size: 50 })
-      .then((page) => !cancelled && setPosts(page.content))
-      .catch(() => !cancelled && setPosts([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [id, authLoading, viewerId]);
+  const { collection } = data;
+  const title = `${collection.name} — DanNest`;
+  const description = collection.description || `A collection by ${collection.ownerUsername} on DanNest.`;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: collection.coverUrl ? [collection.coverUrl] : undefined,
+    },
+  };
+}
 
-  // A members-only collection the viewer neither owns nor has bought into — its posts
-  // stay hidden behind a "buy to unlock" panel instead of the feed.
-  const locked = !!collection && collection.visibility === "MEMBERS_ONLY" && !mine && !collection.viewerHasMembership;
-
-  // Called once Stripe Elements has confirmed the card charge and the saga has
-  // settled (see MembershipCheckoutModal — it owns starting the PaymentIntent,
-  // collecting the card, and polling the purchase to a final status).
-  function handlePurchaseResult(settled: MembershipPurchase) {
-    setCheckoutOpen(false);
-    // Always reload, not just on CONFIRMED — a REFUNDED result can still mean you
-    // already have access (e.g. "Already an active member", refunding a redundant
-    // charge against a membership you already hold). Whatever this specific
-    // purchase did, the collection's real viewerHasMembership is the source of
-    // truth, and the locked panel should never sit stale after an attempt resolves.
-    if (settled.status === "CONFIRMED") {
-      notify("You're in! Refreshing…");
-      reload();
-    } else if (settled.reason === "Already an active member") {
-      // Not really a failure from the buyer's point of view — they already have
-      // access, this specific (redundant) charge is just the one being refunded.
-      notify("You already have access to this collection.");
-      reload();
-    } else if (settled.reason === "no_connected_account") {
-      notify(
-        "This creator hasn't finished setting up payouts yet, so you've been refunded.",
-        "error",
-      );
-      // Core already granted, then has to revoke — see reloadUntilRevoked's comment.
-      reloadUntilRevoked();
-    } else if (settled.reason === "settle_failed") {
-      // A real settle failure that ISN'T "creator never connected" (a Stripe error,
-      // a transient issue) — don't blame the creator's setup for something that may
-      // not be their fault at all.
-      notify(
-        "Something went wrong completing this purchase, so you've been refunded. Please try again shortly.",
-        "error",
-      );
-      reloadUntilRevoked();
-    } else {
-      // Any other rejection reason from Core (price mismatch, archived, etc.) — not
-      // worth surfacing verbatim to a buyer, it's an internal validation detail.
-      // Core never granted anything for these, so there's no revoke to wait on.
-      notify("Purchase didn't go through — you've been refunded.", "error");
-      reload();
-    }
-  }
-
-  const [from, to] = gradientFor(id);
-
-  // Whether the caller follows this collection — only relevant once it's loaded, isn't
-  // the caller's own, and there IS a caller (follow status is a signed-in-only endpoint).
-  const [following, setFollowing] = useState<boolean | null>(null);
-  const [followBusy, setFollowBusy] = useState(false);
-
-  useEffect(() => {
-    if (!collection || mine || !user) return;
-    let cancelled = false;
-    getFollowStatus(id)
-      .then((s) => !cancelled && setFollowing(s.following))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [collection, mine, id, user]);
-
-  // Optimistic follow toggle — flip locally, then persist (revert on failure).
-  async function toggleFollow() {
-    if (!requireLogin() || following === null || followBusy) return;
-    const next = !following;
-    setFollowBusy(true);
-    setFollowing(next);
-    try {
-      await (next ? followCollection(id) : unfollowCollection(id));
-    } catch {
-      setFollowing(!next);
-      notify("Couldn't update follow status. Please try again.", "error");
-    } finally {
-      setFollowBusy(false);
-    }
-  }
-
-  // Optimistic like toggle — flip locally, then persist (revert on failure).
-  function toggleLike(post: Post) {
-    const liked = post.likedByMe;
-    setPosts((cur) =>
-      cur?.map((p) =>
-        p.id === post.id ? { ...p, likedByMe: !liked, likeCount: p.likeCount + (liked ? -1 : 1) } : p,
-      ) ?? cur,
-    );
-    (liked ? unlikePost(post.id) : likePost(post.id)).catch(() => {
-      setPosts((cur) =>
-        cur?.map((p) => (p.id === post.id ? { ...p, likedByMe: liked, likeCount: p.likeCount } : p)) ?? cur,
-      );
-    });
-  }
-
-  // A saved post: replace it if already listed, else prepend.
-  function upsert(saved: Post) {
-    notify(composer?.mode === "edit" ? "Post updated" : "Post created");
-    setComposer(null);
-    setPosts((cur) => {
-      if (!cur) return [saved];
-      const i = cur.findIndex((p) => p.id === saved.id);
-      if (i === -1) return [saved, ...cur];
-      const copy = cur.slice();
-      copy[i] = saved;
-      return copy;
-    });
-  }
-
-  async function handleArchive() {
-    setArchiving(true);
-    try {
-      await archiveCollection(id);
-      router.push("/my-collections");
-    } catch {
-      notify("Archive failed. Please try again.", "error");
-      setArchiving(false);
-      setConfirmingArchive(false);
-    }
-  }
-
+export default function CollectionPage({ params }: Params) {
   return (
-    <>
-      <div className="min-h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-        <Header />
-
-        {collection === undefined ? (
+    // The fallback is the static shell, sent instantly; the content streams in after it.
+    <Suspense
+      fallback={
+        <div className="min-h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+          <Header />
           <main className="mx-auto flex max-w-2xl px-4 py-6">
             <LoadingState />
           </main>
-        ) : collection === null ? (
-          <main className="mx-auto max-w-2xl px-4 py-6">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Collection not found.</p>
-            {/* Same answer for "private" and "doesn't exist" — but if it's theirs,
-                signing in is how they'd see it. */}
-            {!user && (
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Is this one of your nests? Sign in to peek inside.
-                </p>
-                <button
-                  onClick={() => router.push(loginUrl(currentPath()))}
-                  className="rounded-full bg-teal-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-500"
-                >
-                  Sign in
-                </button>
-              </div>
-            )}
-          </main>
-        ) : (
-          <>
-            <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-6">
-              {/* cover banner — shorter full-width strip; `cover` keeps the image's ratio
-                  (trims overflow, never stretches) rather than the taller 16/10 crop box. */}
-              <div
-                className="relative h-48 overflow-hidden rounded-2xl sm:h-56"
-                style={
-                  collection.coverUrl
-                    ? coverStyle(collection.coverUrl, null)
-                    : { background: `linear-gradient(135deg, ${from}, ${to})` }
-                }
-              >
-                {/* back to the home feed — signed-in only, since the feed itself is */}
-                {user && (
-                  <button
-                    onClick={() => router.push("/")}
-                    aria-label="Back"
-                    className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-slate-900/40 text-white backdrop-blur-sm transition hover:bg-slate-900/60"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                )}
-
-                {mine && (
-                  <div className="absolute right-3 top-3">
-                    <button
-                      onClick={() => setMenuOpen((v) => !v)}
-                      aria-label="Collection options"
-                      className="grid h-9 w-9 place-items-center rounded-full bg-slate-900/40 text-white backdrop-blur-sm transition hover:bg-slate-900/60"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <circle cx="5" cy="12" r="1.8" />
-                        <circle cx="12" cy="12" r="1.8" />
-                        <circle cx="19" cy="12" r="1.8" />
-                      </svg>
-                    </button>
-                    {menuOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-                        <div className="absolute right-0 z-40 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
-                          <button
-                            onClick={() => {
-                              setMenuOpen(false);
-                              setEditing(true);
-                            }}
-                            className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setMenuOpen(false);
-                              setConfirmingArchive(true);
-                            }}
-                            className="w-full px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                          >
-                            Archive
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* name overlay — pinned to the bottom, darkened so text stays readable over any cover */}
-                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-linear-to-t from-black/60 to-transparent p-4">
-                  <div className="min-w-0">
-                    {!collection.coverUrl && (
-                      <div className="text-4xl font-bold text-white/90 drop-shadow-lg">
-                        {collection.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <h1 className="mt-1 truncate text-2xl font-bold text-white drop-shadow-md">
-                      {collection.name}
-                    </h1>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    {/* owner badge — distinct from each post's author (a public collection
-                        may later hold posts from multiple contributors). */}
-                    <Link
-                      href={`/users/${collection.ownerId}`}
-                      className="flex shrink-0 items-center gap-2 rounded-full bg-black/30 py-1 pl-1 pr-3 backdrop-blur-sm transition hover:bg-black/50"
-                    >
-                      <div className="shrink-0 rounded-full ring-2 ring-white/80">
-                        {collection.ownerAvatarUrl ? (
-                          <div
-                            className="h-8 w-8 rounded-full"
-                            style={coverStyle(collection.ownerAvatarUrl, collection.ownerAvatarCrop ?? FULL_CROP)}
-                          />
-                        ) : (
-                          <DefaultAvatarIcon size={32} />
-                        )}
-                      </div>
-                      <span className="max-w-24 truncate text-xs font-medium text-white">
-                        {collection.ownerUsername}
-                      </span>
-                    </Link>
-
-                    {!mine && (
-                      <button
-                        onClick={toggleFollow}
-                        // Signed out it stays clickable — the click opens the sign-in prompt.
-                        disabled={!!user && (following === null || followBusy)}
-                        className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-sm transition disabled:opacity-50 ${
-                          following
-                            ? "bg-black/30 text-white hover:bg-black/50"
-                            : "bg-teal-500/90 text-white hover:bg-teal-500"
-                        }`}
-                      >
-                        {following ? "Following" : "Follow"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {collection.description && (
-                <p className="text-sm text-slate-600 dark:text-slate-300">{collection.description}</p>
-              )}
-
-              <p className="text-sm text-slate-400">
-                {collection.visibility === "PRIVATE"
-                  ? "Private · "
-                  : collection.visibility === "MEMBERS_ONLY"
-                    ? collection.viewerHasMembership
-                      ? "Membership · "
-                      : `Members-only · $${(collection.priceCents! / 100).toFixed(2)} · `
-                    : ""}
-                {locked ? "—" : (posts?.length ?? 0)} {(posts?.length ?? 0) === 1 && !locked ? "post" : "posts"}
-              </p>
-
-              {mine && !locked && (
-                <StartPostBar
-                  onClick={() => setComposer({ mode: "create" })}
-                  label={`Pop something new into ${collection.name}…`}
-                />
-              )}
-
-              {locked ? (
-                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 py-10 text-center dark:border-slate-700">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    This collection&apos;s posts are for members only.
-                  </p>
-                  <button
-                    onClick={() => setCheckoutOpen(true)}
-                    className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {`Unlock for $${(collection.priceCents! / 100).toFixed(2)}`}
-                  </button>
-                </div>
-              ) : posts === null ? (
-                <LoadingState minHeight="30vh" />
-              ) : (
-                <PostFeed
-                  posts={posts}
-                  onEdit={(post) => setComposer({ mode: "edit", post })}
-                  onLike={toggleLike}
-                  focusPostId={focusPostId}
-                  focusCommentId={focusCommentId}
-                  emptyLabel={mine ? "This nest is empty — pop something in! 🪺" : "Nothing here yet — check back soon."}
-                />
-              )}
-            </main>
-          </>
-        )}
-      </div>
-
-      {composer && (
-        <PostComposerModal
-          mode={composer.mode}
-          post={composer.mode === "edit" ? composer.post : undefined}
-          defaultCollectionId={id}
-          onClose={() => setComposer(null)}
-          onSaved={upsert}
-        />
-      )}
-
-      {editing && collection && (
-        <CollectionFormModal
-          mode="edit"
-          collection={collection}
-          onClose={() => setEditing(false)}
-          onSaved={(saved) => {
-            notify("Collection updated");
-            setCollection(saved);
-            setEditing(false);
-          }}
-        />
-      )}
-
-      {checkoutOpen && collection && collection.priceCents != null && (
-        <MembershipCheckoutModal
-          collectionId={collection.id}
-          priceCents={collection.priceCents}
-          onClose={() => setCheckoutOpen(false)}
-          onResult={handlePurchaseResult}
-        />
-      )}
-
-      {confirmingArchive && (
-        <ConfirmDialog
-          title="Archive collection?"
-          message={`"${collection?.name}" will move out of your active collections. You can restore it later.`}
-          confirmLabel="Archive"
-          danger
-          busy={archiving}
-          onConfirm={handleArchive}
-          onCancel={() => setConfirmingArchive(false)}
-        />
-      )}
-    </>
+        </div>
+      }
+    >
+      <CollectionContent params={params} />
+    </Suspense>
   );
+}
+
+async function CollectionContent({ params }: Params) {
+  const { id } = await params;
+  return <CollectionView id={id} initial={await loadPublic(id)} />;
 }
