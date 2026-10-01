@@ -5,14 +5,19 @@ import { useRouter } from "next/navigation";
 import GoogleSignIn from "@/components/GoogleSignIn";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useAuth } from "@/lib/auth";
+import { safeNext } from "@/lib/loginRedirect";
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // Once authenticated (either restored or just signed in), leave for home.
+  // Once authenticated (either restored or just signed in), go back to where the
+  // visitor came from (?next=), or home. Read from window rather than
+  // useSearchParams, which would need a Suspense boundary around the whole page.
   useEffect(() => {
-    if (!loading && user) router.replace("/");
+    if (!loading && user) {
+      router.replace(safeNext(new URLSearchParams(window.location.search).get("next")));
+    }
   }, [loading, user, router]);
 
   return (

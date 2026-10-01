@@ -3,10 +3,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PostCard from "../PostCard";
 import { useAuth } from "@/lib/auth";
+import { useRequireLogin } from "@/lib/signInPrompt";
 import type { Post } from "@/lib/posts";
 
 vi.mock("@/lib/auth", () => ({ useAuth: vi.fn() }));
+vi.mock("@/lib/signInPrompt", () => ({ useRequireLogin: vi.fn() }));
 vi.mock("../CommentSection", () => ({ default: () => <div>comment section</div> }));
+
+const requireLogin = vi.fn();
 
 const basePost: Post = {
   id: "post-1",
@@ -29,6 +33,8 @@ const basePost: Post = {
 
 beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
+  requireLogin.mockReset().mockReturnValue(true);
+  vi.mocked(useRequireLogin).mockReturnValue(requireLogin);
 });
 
 describe("PostCard", () => {
@@ -48,6 +54,17 @@ describe("PostCard", () => {
     await userEvent.click(screen.getByText("3"));
 
     expect(onLike).toHaveBeenCalledWith(basePost);
+  });
+
+  it("asks a signed-out visitor to sign in instead of liking", async () => {
+    requireLogin.mockReturnValue(false);
+    const onLike = vi.fn();
+    render(<PostCard post={basePost} onEdit={vi.fn()} onLike={onLike} />);
+
+    await userEvent.click(screen.getByText("3"));
+
+    expect(requireLogin).toHaveBeenCalled();
+    expect(onLike).not.toHaveBeenCalled();
   });
 
   it("toggles the comment section open and closed", async () => {

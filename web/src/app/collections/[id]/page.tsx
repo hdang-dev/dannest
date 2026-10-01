@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
-import RequireAuth from "@/components/RequireAuth";
 import PostFeed from "@/components/PostFeed";
 import StartPostBar from "@/components/StartPostBar";
 import PostComposerModal from "@/components/PostComposerModal";
@@ -17,6 +16,8 @@ import { gradientFor } from "@/lib/gradient";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
+import { useRequireLogin } from "@/lib/signInPrompt";
+import { currentPath, loginUrl } from "@/lib/loginRedirect";
 import { useToast } from "@/lib/toast";
 import { archiveCollection, getCollection, type Collection } from "@/lib/collections";
 import { listByCollection, likePost, unlikePost, type Post } from "@/lib/posts";
@@ -32,7 +33,8 @@ export default function CollectionPage() {
   // From a notification deep link — scroll to (and, for a reply, open) this post/comment.
   const focusPostId = searchParams.get("post");
   const focusCommentId = searchParams.get("comment");
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const requireLogin = useRequireLogin();
   const { notify } = useToast();
   const [collection, setCollection] = useState<Collection | null | undefined>(undefined);
   const [posts, setPosts] = useState<Post[] | null>(null);
@@ -77,8 +79,13 @@ export default function CollectionPage() {
       .catch(() => setPosts([]));
   }
 
-  // Load the real collection + its posts from the backend.
+  // Load the real collection + its posts from the backend — but only once the session
+  // check has finished. This page is public, so it mounts before the access token is
+  // restored; fetching any earlier would go out anonymous, and an owner would get
+  // "not found" on their own private collection. Re-runs when the viewer signs in/out.
+  const viewerId = user?.id;
   useEffect(() => {
+    if (authLoading) return;
     let cancelled = false;
     getCollection(id)
       .then((c) => !cancelled && setCollection(c))
@@ -89,7 +96,7 @@ export default function CollectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, authLoading, viewerId]);
 
   // A members-only collection the viewer neither owns nor has bought into — its posts
   // stay hidden behind a "buy to unlock" panel instead of the feed.
@@ -140,13 +147,13 @@ export default function CollectionPage() {
 
   const [from, to] = gradientFor(id);
 
-  // Whether the caller follows this collection — only relevant once it's loaded and
-  // isn't the caller's own (a visible-but-not-mine collection is always PUBLIC).
+  // Whether the caller follows this collection — only relevant once it's loaded, isn't
+  // the caller's own, and there IS a caller (follow status is a signed-in-only endpoint).
   const [following, setFollowing] = useState<boolean | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
 
   useEffect(() => {
-    if (!collection || mine) return;
+    if (!collection || mine || !user) return;
     let cancelled = false;
     getFollowStatus(id)
       .then((s) => !cancelled && setFollowing(s.following))
@@ -154,11 +161,11 @@ export default function CollectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [collection, mine, id]);
+  }, [collection, mine, id, user]);
 
   // Optimistic follow toggle — flip locally, then persist (revert on failure).
   async function toggleFollow() {
-    if (following === null || followBusy) return;
+    if (!requireLogin() || following === null || followBusy) return;
     const next = !following;
     setFollowBusy(true);
     setFollowing(next);
@@ -214,7 +221,7 @@ export default function CollectionPage() {
   }
 
   return (
-    <RequireAuth>
+    <>
       <div className="min-h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <Header />
 
@@ -225,6 +232,21 @@ export default function CollectionPage() {
         ) : collection === null ? (
           <main className="mx-auto max-w-2xl px-4 py-6">
             <p className="text-sm text-slate-500 dark:text-slate-400">Collection not found.</p>
+            {/* Same answer for "private" and "doesn't exist" — but if it's theirs,
+                signing in is how they'd see it. */}
+            {!user && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Is this one of your nests? Sign in to peek inside.
+                </p>
+                <button
+                  onClick={() => router.push(loginUrl(currentPath()))}
+                  className="rounded-full bg-teal-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-500"
+                >
+                  Sign in
+                </button>
+              </div>
+            )}
           </main>
         ) : (
           <>
@@ -239,15 +261,18 @@ export default function CollectionPage() {
                     : { background: `linear-gradient(135deg, ${from}, ${to})` }
                 }
               >
-                <button
-                  onClick={() => router.push("/")}
-                  aria-label="Back"
-                  className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-slate-900/40 text-white backdrop-blur-sm transition hover:bg-slate-900/60"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+                {/* back to the home feed — signed-in only, since the feed itself is */}
+                {user && (
+                  <button
+                    onClick={() => router.push("/")}
+                    aria-label="Back"
+                    className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-slate-900/40 text-white backdrop-blur-sm transition hover:bg-slate-900/60"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
 
                 {mine && (
                   <div className="absolute right-3 top-3">
@@ -328,7 +353,8 @@ export default function CollectionPage() {
                     {!mine && (
                       <button
                         onClick={toggleFollow}
-                        disabled={following === null || followBusy}
+                        // Signed out it stays clickable — the click opens the sign-in prompt.
+                        disabled={!!user && (following === null || followBusy)}
                         className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-sm transition disabled:opacity-50 ${
                           following
                             ? "bg-black/30 text-white hover:bg-black/50"
@@ -436,6 +462,6 @@ export default function CollectionPage() {
           onCancel={() => setConfirmingArchive(false)}
         />
       )}
-    </RequireAuth>
+    </>
   );
 }

@@ -4,9 +4,11 @@ import userEvent from "@testing-library/user-event";
 import CommentSection from "../CommentSection";
 import { listComments, createComment, deleteComment } from "@/lib/comments";
 import { useAuth } from "@/lib/auth";
+import { useRequireLogin } from "@/lib/signInPrompt";
 import type { Comment } from "@/lib/comments";
 
 vi.mock("@/lib/auth", () => ({ useAuth: vi.fn() }));
+vi.mock("@/lib/signInPrompt", () => ({ useRequireLogin: vi.fn() }));
 vi.mock("@/lib/comments", () => ({
   listComments: vi.fn(),
   createComment: vi.fn(),
@@ -34,9 +36,13 @@ function page(content: Comment[]) {
   return { content, page: 0, size: 10, totalElements: content.length, totalPages: 1, last: true };
 }
 
+const requireLogin = vi.fn();
+
 beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ user: { id: "author-1" } } as ReturnType<typeof useAuth>);
   vi.mocked(deleteComment).mockResolvedValue(undefined);
+  requireLogin.mockReset().mockReturnValue(true);
+  vi.mocked(useRequireLogin).mockReturnValue(requireLogin);
 });
 
 describe("CommentSection", () => {
@@ -113,5 +119,24 @@ describe("CommentSection", () => {
 
     await waitFor(() => screen.getByText("Nice post!"));
     expect(screen.queryByText("More")).not.toBeInTheDocument();
+  });
+
+  it("is read-only for a signed-out visitor: comments show, the composer becomes a sign-in prompt", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
+    requireLogin.mockReturnValue(false);
+    vi.mocked(listComments).mockResolvedValue(page([comment({ content: "Lovely!" })]));
+
+    render(<CommentSection postId="post-1" initialCount={1} />);
+
+    await waitFor(() => screen.getByText("Lovely!"));
+    expect(screen.queryByPlaceholderText("Write a comment…")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Sign in to join the chatter 💬"));
+    expect(requireLogin).toHaveBeenCalledTimes(1);
+
+    // Reply asks to sign in too, and doesn't open a reply box.
+    await userEvent.click(screen.getByText("Reply"));
+    expect(requireLogin).toHaveBeenCalledTimes(2);
+    expect(screen.queryByPlaceholderText("Reply to dan…")).not.toBeInTheDocument();
   });
 });

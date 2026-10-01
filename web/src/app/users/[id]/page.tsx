@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
-import RequireAuth from "@/components/RequireAuth";
 import DefaultAvatarIcon from "@/components/DefaultAvatarIcon";
 import LoadingState from "@/components/LoadingState";
 import { useAuth } from "@/lib/auth";
@@ -15,7 +14,7 @@ import { getProfile, type Profile } from "@/lib/profile";
 export default function UserProfilePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
 
@@ -26,8 +25,10 @@ export default function UserProfilePage() {
     }
   }, [user, id, router]);
 
+  // Public page: wait for the session check so we know whether it's your own profile
+  // (redirected above) before fetching, instead of fetching once anonymous and again.
   useEffect(() => {
-    if (user && id === user.id) return;
+    if (loading || (user && id === user.id)) return;
     let cancelled = false;
     getProfile(id)
       .then((p) => !cancelled && setProfile(p))
@@ -35,10 +36,10 @@ export default function UserProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [id, user]);
+  }, [id, user, loading]);
 
   return (
-    <RequireAuth>
+    <>
       <div className="min-h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <Header />
 
@@ -83,6 +84,6 @@ export default function UserProfilePage() {
           )}
         </main>
       </div>
-    </RequireAuth>
+    </>
   );
 }

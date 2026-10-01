@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { SignInPromptProvider } from "@/lib/signInPrompt";
 import { ToastProvider } from "@/lib/toast";
 import { WarmupBanner } from "@/lib/warmup";
 
@@ -45,7 +46,9 @@ export default function RootLayout({
         />
         <WarmupBanner />
         <ToastProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <SignInPromptProvider>{children}</SignInPromptProvider>
+          </AuthProvider>
         </ToastProvider>
       </body>
     </html>

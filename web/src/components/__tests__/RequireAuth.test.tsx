@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 
 beforeEach(() => {
   replace.mockReset();
+  window.history.pushState({}, "", "/");
 });
 
 describe("RequireAuth", () => {
@@ -37,6 +38,19 @@ describe("RequireAuth", () => {
 
     expect(replace).toHaveBeenCalledWith("/login");
     expect(screen.queryByText("secret content")).not.toBeInTheDocument();
+  });
+
+  it("keeps a deep link so login can send the visitor back to it", () => {
+    vi.mocked(useAuth).mockReturnValue({ user: null, loading: false } as ReturnType<typeof useAuth>);
+    window.history.pushState({}, "", "/activity?tab=mine");
+
+    render(
+      <RequireAuth>
+        <div>secret content</div>
+      </RequireAuth>,
+    );
+
+    expect(replace).toHaveBeenCalledWith("/login?next=%2Factivity%3Ftab%3Dmine");
   });
 
   it("renders children once a user is present", () => {

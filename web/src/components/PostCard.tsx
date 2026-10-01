@@ -9,6 +9,7 @@ import { formatRelativeTime } from "@/lib/time";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
+import { useRequireLogin } from "@/lib/signInPrompt";
 import { HeartIcon, CommentIcon } from "./icons";
 import type { Post } from "@/lib/posts";
 
@@ -27,6 +28,7 @@ type Props = {
 
 export default function PostCard({ post, onEdit, onLike, focusPostId, focusCommentId }: Props) {
   const { user } = useAuth();
+  const requireLogin = useRequireLogin();
   const isFocusTarget = focusPostId === post.id;
   const [showComments, setShowComments] = useState(isFocusTarget && !!focusCommentId);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -148,7 +150,7 @@ export default function PostCard({ post, onEdit, onLike, focusPostId, focusComme
       {/* actions */}
       <div className="flex items-center gap-1 p-3">
         <button
-          onClick={() => onLike(post)}
+          onClick={() => requireLogin() && onLike(post)}
           className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium tabular-nums transition ${
             post.likedByMe
               ? "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400"

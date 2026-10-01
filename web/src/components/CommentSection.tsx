@@ -7,6 +7,7 @@ import { formatRelativeTime } from "@/lib/time";
 import { coverStyle } from "@/lib/cover";
 import { FULL_CROP, type Crop } from "@/lib/media";
 import { useAuth } from "@/lib/auth";
+import { useRequireLogin } from "@/lib/signInPrompt";
 import {
   listComments,
   createComment,
@@ -289,6 +290,7 @@ type Props = {
 
 export default function CommentSection({ postId, initialCount, onCountChange, focusCommentId }: Props) {
   const { user } = useAuth();
+  const requireLogin = useRequireLogin();
 
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [total, setTotal] = useState(initialCount);
@@ -487,6 +489,7 @@ export default function CommentSection({ postId, initialCount, onCountChange, fo
   }
 
   function toggleReply(id: string) {
+    if (!requireLogin()) return;
     setReplyingTo((cur) => (cur === id ? null : id));
     setReplyText("");
   }
@@ -576,18 +579,27 @@ export default function CommentSection({ postId, initialCount, onCountChange, fo
         </div>
       )}
 
-      <div className="mt-3 flex gap-2.5">
-        <Avatar url={user?.avatarUrl ?? null} crop={user?.avatarCrop ?? null} size={32} />
-        <div className="min-w-0 flex-1">
-          <Composer
-            placeholder="Write a comment…"
-            value={newText}
-            onChange={setNewText}
-            onSubmit={postTopLevel}
-            submitting={posting}
-          />
+      {user ? (
+        <div className="mt-3 flex gap-2.5">
+          <Avatar url={user.avatarUrl} crop={user.avatarCrop} size={32} />
+          <div className="min-w-0 flex-1">
+            <Composer
+              placeholder="Write a comment…"
+              value={newText}
+              onChange={setNewText}
+              onSubmit={postTopLevel}
+              submitting={posting}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <button
+          onClick={requireLogin}
+          className="mt-3 w-full rounded-2xl border border-dashed border-slate-300 px-3.5 py-2 text-left text-sm text-slate-400 transition hover:border-teal-400 hover:text-teal-600 dark:border-slate-700 dark:hover:text-teal-400"
+        >
+          Sign in to join the chatter 💬
+        </button>
+      )}
     </div>
   );
 }

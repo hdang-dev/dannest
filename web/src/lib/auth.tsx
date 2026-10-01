@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { API_URL } from "./config";
 import { refreshSession, setUnauthorizedHandler } from "./api";
 import { clearToken, getToken, setToken } from "./token";
+import { currentPath, loginUrl } from "./loginRedirect";
 import type { Crop } from "./media";
 
 // `avatarUrl`/`avatarCrop` are the user's own uploaded/embedded photo (backed by a
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearToken();
       setUser(null);
       if (window.location.pathname !== "/login") {
-        router.replace("/login");
+        router.replace(loginUrl(currentPath()));
       }
     });
     return () => setUnauthorizedHandler(null);
