@@ -524,3 +524,51 @@ Key properties (all in [Lesson 8](../lessons/lesson-8-membership-saga.md)):
 | `core.membership.granted` | core | `marketplace.membership-saga.q` |
 | `core.membership.rejected` | core | `marketplace.membership-saga.q` |
 | `marketplace.membership.payout-failed` | marketplace | `core.membership-payout-failed.q` |
+
+### l) Open a public collection (signed out or signed in)
+
+Public collections and profiles are readable without an account. The page is
+**server-rendered with Partial Prerendering**: Next sends a static shell at once,
+then streams in the public content from a short-lived cache. The web server never
+knows who the visitor is, so it always reads Core **anonymously** — only PUBLIC,
+non-archived content can enter that shared cache. Personal state is added in the
+browser. See [Lesson 11](../lessons/lesson-11-public-pages-ssr.md).
+
+```mermaid
+sequenceDiagram
+    participant B as browser
+    participant W as web server (Next)
+    participant K as web cache (in memory)
+    participant C as core
+
+    B->>W: GET /collections/{id}
+    W-->>B: static shell (header + spinner), streamed first
+    W->>K: getPublicCollectionWithPosts(id)
+    alt fresh entry (< 60s)
+        K-->>W: cached {collection, posts}
+    else stale (60s–5min): serve it, refresh in background
+        K-->>W: cached {collection, posts}
+        K->>C: GET collection + posts (no token)
+    else missing or expired (> 5min)
+        K->>C: GET /api/v1/collections/{id} + /posts (no token, 8s timeout)
+        C-->>K: 200 public data, or 404 (private / members-only / archived)
+    end
+    W-->>B: rest of the stream: content + og:title/og:image (or nothing on 404)
+    Note over B: hydrate; restore session (POST /auth/refresh)
+    opt signed in, or the server had nothing
+        B->>C: GET collection + posts (Bearer token)
+        C-->>B: viewer's view: likes, follow, owner controls, private if theirs
+    end
+```
+
+- **Anonymous rule in Core** — `GET` on a single collection, its posts, a post's
+  comments, and a user profile is open without a token (`SecurityConfig`). With no
+  viewer, the services only return PUBLIC, non-archived content; everything else
+  is a 404, and per-user fields (`likedByMe`, membership) are skipped. `/error` is
+  permitted too, so that 404 isn't re-checked into a 401 on the error forward.
+- **Read-only in the browser** — like, follow, comment and reply call
+  `useRequireLogin()`; signed out, it opens a sign-in dialog and returns the
+  visitor to the same page after login (`/login?next=…`, same-site paths only).
+- **Freshness** — signed-out visitors can see a copy up to 5 minutes old; there's
+  no refresh-on-change signal yet. Known gaps:
+  [public-pages-open-issues.md](public-pages-open-issues.md).

@@ -91,6 +91,10 @@ list, library-by-library breakdown, and sequence diagrams for every flow:
 
 - Google Sign-In, own JWTs (short-lived access token + revocable rotating refresh token in Redis)
 - Collections (public / private / **members-only**), posts, threaded comments, likes, follows
+- **Public pages** — signed-out visitors can browse public collections and profiles
+  read-only (any action asks them to sign in, then returns them to the same page);
+  both pages are **server-rendered with Partial Prerendering** — an instant static
+  shell, briefly cached public content streamed in, and link-preview tags
 - Media uploads (avatars, covers, post images) to Cloudflare R2 with display-time crop
 - Realtime notifications over WebSocket/STOMP, with a polling fallback
 - Redis feed-pagination cache + a trending-posts leaderboard on its own `/trending` page
@@ -132,6 +136,7 @@ things were built the way they were, mistakes included:
 | 8 | [The membership saga](docs/lessons/lesson-8-membership-saga.md) — choreography, outbox/inbox, Stripe Connect, compensation |
 | 9 | [Waking up for free](docs/lessons/lesson-9-render-cold-start.md) — Render free-tier cold starts, parallel wake-up, a shared warming indicator |
 | 10 | [Testing three stacks](docs/lessons/lesson-10-testing.md) — JUnit/Mockito, Vitest/RTL, Testcontainers, and 4 real bugs tests actually caught |
+| 11 | [Public pages and hybrid rendering](docs/lessons/lesson-11-public-pages-ssr.md) — SSR vs `use client`, `use cache` + Suspense streaming, anonymous reads, a 404 that became a 401 |
 
 **Technical reference** (`docs/tech/`) — current-state, not a story:
 
@@ -141,6 +146,8 @@ things were built the way they were, mistakes included:
   reference for all four databases
 - [Marketplace open issues](docs/tech/marketplace-open-issues.md) — known gaps in
   the membership saga
+- [Public pages open issues](docs/tech/public-pages-open-issues.md) — cache
+  freshness, rate limiting, and other deliberate first-version cuts
 
 ## Deployment
 
@@ -171,5 +178,8 @@ RabbitMQ, **Upstash** Redis, **Cloudflare R2**, and **Stripe** (test mode).
       transactional outbox/inbox, choreography over RabbitMQ, both compensation paths)
 - [x] Unit + integration tests across all three backend services and the
       frontend ([Lesson 10](docs/lessons/lesson-10-testing.md)), gated in CI
+- [x] Public collection/profile pages, server-rendered with a cached anonymous
+      view ([Lesson 11](docs/lessons/lesson-11-public-pages-ssr.md))
+- [ ] Refresh-on-change for the public-page cache (hide newly private collections at once)
 - [ ] Scheduled "stuck-saga" sweep for purchases that never get a reply
 - [ ] Live-mode Stripe (needs account verification)
