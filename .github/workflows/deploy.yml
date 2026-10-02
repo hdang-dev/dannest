@@ -6,9 +6,13 @@ name: deploy
 #           -> GHCR (image tagged with the commit SHA)
 #           -> GitHub Actions (CD: tell Render to run that exact image)
 #           -> Render (pulls the image, runs the container — never builds from source)
+#
+# Manual run (Actions tab -> deploy -> Run workflow) rebuilds and redeploys everything,
+# e.g. after changing a NEXT_PUBLIC_* repo variable, which is baked in at build time.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,10 +26,10 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      web: ${{ steps.filter.outputs.web }}
-      core: ${{ steps.filter.outputs.core }}
-      notification: ${{ steps.filter.outputs.notification }}
-      marketplace: ${{ steps.filter.outputs.marketplace }}
+      web: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.web }}
+      core: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.core }}
+      notification: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.notification }}
+      marketplace: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.marketplace }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -179,7 +183,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{"imageUrl":"${{ needs.build-core.outputs.image }}"}' \
-            "https://api.render.com/v1/services/srv-d955uk0js32c73ffde7g/deploys"
+            "https://api.render.com/v1/services/srv-davsaavlk1mc73cceef0/deploys"
 
   # =========================== NOTIFICATION ===========================
   check-notification:
@@ -253,7 +257,7 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{"imageUrl":"${{ needs.build-notification.outputs.image }}"}' \
-            "https://api.render.com/v1/services/srv-d9mqrofqj5pc73dk07k0/deploys"
+            "https://api.render.com/v1/services/srv-davsa5vlk1mc73ccdscg/deploys"
 
   # =========================== MARKETPLACE ===========================
   check-marketplace:
@@ -290,4 +294,4 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{}' \
-            "https://api.render.com/v1/services/srv-dae1ns8n74is73c1aj10/deploys"
+            "https://api.render.com/v1/services/srv-davsabu0tbcc73f75e6g/deploys"

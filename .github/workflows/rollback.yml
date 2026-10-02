@@ -33,8 +33,8 @@ jobs:
         run: |
           case "${{ inputs.service }}" in
             web)          service_id=srv-d955uk3tqb8s73eer9bg ;;
-            core)         service_id=srv-d955uk0js32c73ffde7g ;;
-            notification) service_id=srv-d9mqrofqj5pc73dk07k0 ;;
+            core)         service_id=srv-davsaavlk1mc73cceef0 ;;
+            notification) service_id=srv-davsa5vlk1mc73ccdscg ;;
           esac
 
           curl -fsS -X POST \
