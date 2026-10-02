@@ -128,7 +128,7 @@ obvious why at first:
   ports, but browsers treat that as the *same site* (site = registrable
   domain, not port). `SameSite=Lax` works fine over plain `http`.
 - **Production**: frontend and backend are two different Render subdomains
-  (`dannest-punh.onrender.com` vs `dannest-service-jauh.onrender.com`).
+  (`dannest-punh.onrender.com` vs `core-q9ti.onrender.com`).
   `onrender.com` itself is on the public suffix list, so each subdomain
   counts as its own site — this is genuinely **cross-site**. That requires
   `SameSite=None`, and browsers refuse `SameSite=None` without `Secure`
