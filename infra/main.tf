@@ -29,21 +29,21 @@
 # The two live URLs reference each other (CORS needs the web URL; the web app
 # needs the backend URL). Referencing the resources' .url attributes both ways
 # would be a dependency cycle, so we pin the known stable URLs here.
+#
+# The web URL is linked from the CV — never recreate the web service.
 locals {
   web_url          = "https://dannest-punh.onrender.com"
-  backend_url      = "https://dannest-service-jauh.onrender.com"
-  notification_url = "https://dannest-notification.onrender.com"
-  # Best-guess slug — Render may append a random suffix if "dannest-marketplace" isn't
-  # available. Correct this (and NEXT_PUBLIC_MARKETPLACE_API_URL below) to the real URL
-  # after the service is actually created; not applied yet, see NOTE below.
-  marketplace_url = "https://dannest-marketplace.onrender.com"
+  backend_url      = "https://core-q9ti.onrender.com"
+  notification_url = "https://notification-gou7.onrender.com"
+  marketplace_url  = "https://marketplace-cxfj.onrender.com"
 }
 
 # ---- Backend API (Core): Docker service built from services/core/Dockerfile ----
 resource "render_web_service" "backend" {
-  name   = "dannest-service"
-  plan   = "free"
-  region = "virginia"
+  provider = render.core
+  name     = "core"
+  plan     = "free"
+  region   = "virginia"
 
   runtime_source = {
     docker = {
@@ -100,9 +100,10 @@ resource "render_web_service" "backend" {
 
 # ---- Notification service: Docker service built from services/notification/Dockerfile ----
 resource "render_web_service" "notification" {
-  name   = "dannest-notification"
-  plan   = "free"
-  region = "virginia"
+  provider = render.notify
+  name     = "notification"
+  plan     = "free"
+  region   = "virginia"
 
   runtime_source = {
     docker = {
@@ -136,14 +137,11 @@ resource "render_web_service" "notification" {
 }
 
 # ---- Marketplace service: Docker service built from services/marketplace/Dockerfile ----
-# Not created yet — see the NOTE at the top of this file on why `terraform apply` isn't
-# run blindly here (it would also touch backend/notification/web's runtime_source drift).
-# Create this one resource deliberately once services/marketplace has something worth
-# deploying, or via the Render dashboard/API directly, then reconcile state.
 resource "render_web_service" "marketplace" {
-  name   = "dannest-marketplace"
-  plan   = "free"
-  region = "virginia"
+  provider = render.market
+  name     = "marketplace"
+  plan     = "free"
+  region   = "virginia"
 
   runtime_source = {
     docker = {
