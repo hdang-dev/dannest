@@ -17,8 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Publishes {@link OutboxEvent} rows RabbitMQ hasn't seen yet, oldest first. A failed
- * publish just leaves {@code published_at} null — picked up again next tick, no
+ * publish just leaves {@code published_at} null — picked up again next run, no
  * special retry bookkeeping beyond {@code attempts}/{@code last_error} for visibility.
+ *
+ * <p>Normally runs right after each commit that wrote an outbox row (see
+ * {@link OutboxRelayTrigger}). The scheduled run is only a backup sweep for rows that
+ * failed to publish — kept slow on purpose: Neon's free tier only sleeps after 5 idle
+ * minutes and bills every awake minute, and the old 1s poll kept it awake 24/7.
  */
 @Slf4j
 @Component
@@ -26,11 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class OutboxPoller {
 
     private static final int BATCH_SIZE = 100;
+    private static final long SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 
     private final OutboxEventRepository outboxEventRepository;
     private final RabbitTemplate rabbitTemplate;
 
-    @Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelay = SWEEP_INTERVAL_MS)
     @Transactional
     public void publishPending() {
         List<OutboxEvent> batch =

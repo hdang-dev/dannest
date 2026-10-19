@@ -53,6 +53,14 @@ spring:
             simple:
                 default-requeue-rejected: false
 
+    # --- Scheduling ---
+    # One scheduler thread runs every outbox publish (both the after-commit trigger and
+    # the backup sweep), so they never overlap — see OutboxRelayTrigger.
+    task:
+        scheduling:
+            pool:
+                size: 1
+
     # --- File uploads (media) ---
     # Cap upload size; the frontend sends already-cropped WebP images.
     servlet:

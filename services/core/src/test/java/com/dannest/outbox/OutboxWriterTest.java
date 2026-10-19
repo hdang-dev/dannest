@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class OutboxWriterTest {
@@ -20,13 +21,16 @@ class OutboxWriterTest {
     @Mock
     private OutboxEventRepository repository;
 
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private OutboxWriter writer;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        writer = new OutboxWriter(repository, objectMapper);
+        writer = new OutboxWriter(repository, objectMapper, applicationEventPublisher);
     }
 
     record Payload(String purchaseId) {
@@ -43,6 +47,13 @@ class OutboxWriterTest {
         assertThat(saved.getAggregateId()).isEqualTo("purchase-1");
         assertThat(saved.getEventType()).isEqualTo("core.membership.granted");
         assertThat(saved.getPayload()).contains("\"purchaseId\":\"purchase-1\"");
+    }
+
+    @Test
+    void signalsThatAnEventWasWrittenSoItCanBePublishedAfterCommit() {
+        writer.write("MEMBERSHIP_PURCHASE", "purchase-1", "core.membership.granted", new Payload("purchase-1"));
+
+        verify(applicationEventPublisher).publishEvent(any(OutboxEventWritten.class));
     }
 
     @Test

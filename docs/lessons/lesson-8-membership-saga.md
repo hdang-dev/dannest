@@ -110,16 +110,17 @@ BEGIN
   update purchase set status = 'CHARGED'
   insert into outbox_event (event_type, payload, published_at = null)
 COMMIT
--- ...separately, a poller:
-every 1s: select * from outbox_event where published_at is null order by created_at
-          → publish each to RabbitMQ → update published_at = now()
+-- ...then, right after commit (plus a backup sweep):
+select * from outbox_event where published_at is null order by created_at
+→ publish each to RabbitMQ → update published_at = now()
 ```
 
 Now the event and the state change commit together or not at all. RabbitMQ being
-down just means the poller retries next tick. Both services do this:
+down just means the next run (or the backup sweep) retries it. Both services do this:
 
 - **Core** — `OutboxWriter.write(...)` inside a `@Transactional` method,
-  `OutboxPoller` (`@Scheduled(fixedDelay = 1000)`), `outbox_event` table.
+  `OutboxRelayTrigger` publishes after each commit, `OutboxPoller` sweeps every
+  30 min for anything that failed, `outbox_event` table.
 - **Marketplace** — `writeOutboxEvent(session, ...)` inside
   `session.withTransaction(...)`, `startOutboxPoller()`, `outboxevents` collection.
 
@@ -127,11 +128,12 @@ Single instance of each service, by design (same as Notification —
 [Lesson 6](lesson-6-feed-cache-and-trending.md) §4), so the poller needs no
 `SKIP LOCKED` / row-claim dance — just "unpublished, oldest first."
 
-> **Does the 1s poller keep the Render free service awake / burn the quota?**
-> No. Render's free-tier sleep is triggered by lack of **inbound HTTP**; an
-> internal timer doesn't count. The poller runs while the service is up and
-> stops when it sleeps — and a sleeping producer just means its outbox drains a
-> few seconds later when something wakes it.
+> **Why not just poll every second?** Core started that way. Render didn't
+> care (its sleep only counts inbound HTTP), but the database did: Neon's free
+> tier bills every minute the compute is awake and only sleeps after 5 idle
+> minutes. A 1s query meant it never slept — the 100 CU-hour monthly allowance
+> ran out in ~17 days and the database was suspended. Publishing after commit
+> keeps events instant; the slow sweep only exists as the safety net.
 
 ## 5. The idempotent inbox — and the bug in where you put the claim
 

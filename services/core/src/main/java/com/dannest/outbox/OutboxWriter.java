@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,6 +19,7 @@ public class OutboxWriter {
 
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public void write(String aggregateType, String aggregateId, String eventType, Object payload) {
         String json;
@@ -37,5 +39,8 @@ public class OutboxWriter {
                 .payload(json)
                 .createdAt(Instant.now())
                 .build());
+        // Picked up after commit by OutboxRelayTrigger, so the event goes out right
+        // away instead of waiting for the poller's next sweep.
+        applicationEventPublisher.publishEvent(new OutboxEventWritten());
     }
 }
