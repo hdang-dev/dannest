@@ -10,6 +10,12 @@ spring:
         url: ${DB_URL:jdbc:postgresql://localhost:5440/dannest}
         username: ${DB_USER:dannest}
         password: ${DB_PASSWORD:dannest}
+        # Close idle connections instead of keeping 10 open forever: Hikari recycles
+        # each one every ~30 min, and every reconnect wakes Neon's free-tier compute,
+        # which then can't reach its 5-idle-minute sleep (it bills awake minutes).
+        hikari:
+            minimum-idle: 0
+            idle-timeout: 60000
 
     # --- JPA / Hibernate (the ORM) ---
     jpa:
@@ -90,6 +96,11 @@ management:
         web:
             exposure:
                 include: health,info
+    # Render and UptimeRobot hit /actuator/health every few minutes; keep the DB out
+    # of it so those pings don't wake Neon. The service being up is enough signal.
+    health:
+        db:
+            enabled: false
 
 server:
     port: ${SERVER_PORT:8090}
