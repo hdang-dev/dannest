@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import CollectionsStrip from "@/components/CollectionsStrip";
@@ -10,6 +11,7 @@ import WelcomeCard from "@/components/WelcomeCard";
 import StartPostBar from "@/components/StartPostBar";
 import PostComposerModal from "@/components/PostComposerModal";
 import { listFeed, likePost, unlikePost, type Post } from "@/lib/posts";
+import { listCollections } from "@/lib/collections";
 import { useToast } from "@/lib/toast";
 
 type Composer = { mode: "create" } | { mode: "edit"; post: Post } | null;
@@ -18,6 +20,8 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer>(null);
+  const [hasCollection, setHasCollection] = useState<boolean | null>(null);
+  const router = useRouter();
   const { notify } = useToast();
 
   useEffect(() => {
@@ -29,6 +33,25 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  // Only the welcome card needs this: a post must go into a collection, so a brand-new
+  // user is sent to make one first instead of into a composer with nothing to pick.
+  const feedEmpty = posts?.length === 0;
+  useEffect(() => {
+    if (!feedEmpty) return;
+    let cancelled = false;
+    listCollections({ scope: "MINE", size: 1 })
+      .then((page) => !cancelled && setHasCollection(page.content.length > 0))
+      .catch(() => !cancelled && setHasCollection(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [feedEmpty]);
+
+  function startFirstPost() {
+    if (hasCollection === false) router.push("/my-collections?new=1");
+    else setComposer({ mode: "create" });
+  }
 
   // Optimistic like toggle — flip locally, then persist (revert on failure).
   function toggleLike(post: Post) {
@@ -74,7 +97,7 @@ export default function Home() {
           {posts === null ? (
             <PostFeedSkeleton />
           ) : posts.length === 0 ? (
-            <WelcomeCard onCreate={() => setComposer({ mode: "create" })} />
+            <WelcomeCard onCreate={startFirstPost} />
           ) : (
             <>
               <StartPostBar onClick={() => setComposer({ mode: "create" })} />

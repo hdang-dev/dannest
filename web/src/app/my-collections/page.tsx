@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import RequireAuth from "@/components/RequireAuth";
 import CollectionFormModal from "@/components/CollectionFormModal";
@@ -25,10 +26,22 @@ export default function CollectionsPage() {
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [visFilter, setVisFilter] = useState<VisibilityFilter>("ALL");
-  const [modal, setModal] = useState<ModalState>(null);
+  // ?new=1 (from the home welcome card) opens the create form straight away. Safe to
+  // read window here: RequireAuth renders only a loader until the client has a user.
+  const [modal, setModal] = useState<ModalState>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1"
+      ? { mode: "create" }
+      : null,
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<Collection | null>(null);
+  const router = useRouter();
   const { notify } = useToast();
+
+  // Drop ?new=1 so a refresh doesn't reopen the form.
+  useEffect(() => {
+    if (window.location.search.includes("new=1")) router.replace("/my-collections");
+  }, [router]);
 
   // Search + filters run on the backend; debounced so typing doesn't fire per keystroke.
   useEffect(() => {
